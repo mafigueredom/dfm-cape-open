@@ -1,0 +1,640 @@
+{
+  "schema_version": "1.4",
+  "meta": {
+    "label": "pow_v07_10_60",
+    "source_mph": "CFD Simulations/v1/COMSOLSimFIles/POW_V07_10_60_mb.mph",
+    "note": "POW_V07 conformance: FluxDanckwerts + step inlet (valve s1/s2), matching saved COMSOL Inflow c0. Lab SOPDT (θ≈113 s) is an outlet/instrument filter for exp overlays — not applied at the inlet (that double-counted bed delay).",
+    "comsol_inlet": "Inflow FluxDanckwerts with c0=[cCO2_0,cN2_0,cH2_0,0,0]; yCO2_0=CO2_vol*s1 (step).",
+    "comsol_transport": "DispersionInPorousMedia=0 but D_c_i=DL(Dm_i,dp,dl.w) with DL=0.7*D+0.5*dp*u and u=dl.w superficial (Jul-2026 dmodel.xml).",
+    "transport_extract": "extract_pow_transport.py",
+    "fenics_implementation": "v1.3",
+    "factory_id": "methanation_dfm",
+    "alignment_target": "COMSOL_POW_V07",
+    "fenics_implementation_detail": {
+      "velocity": "prescribed_U0",
+      "Dm": "wilke_dynamic",
+      "D_z": "DL(Dm,dp,Vel_D)",
+      "inlet_mass": "danckwerts",
+      "inlet_forcing": "step_cycle_phases",
+      "outlet_filter": "lab_sopdt_for_exp_overlay",
+      "time_step_s": 0.02,
+      "Diff_ij": "fuller_at_T_op",
+      "comparison": "compare_pow_comsol.py (v1.4, offline)"
+    },
+    "sopdt_placement": "outlet_filter_only",
+    "note_sopdt": "A: PDE step inlet; lab SOPDT only on outlet_sopdt_filter when plotting.",
+    "calibration_note": "Working opt-1: ads Step1 SOPDT + R1 rxn SOPDT; kinetics pre-Optuna R2 (A_rxn=16491, m1=1.7, m2=5, Q_rxn_scale=1). Optuna R2 rejected by fair A/B (see results/calibration/compare_preR2_vs_R2.json).",
+    "calibration_early_weight": {
+      "early_end_s": 80.0,
+      "early_weight": 1.0,
+      "mid_start_s": 80.0,
+      "mid_end_s": 200.0,
+      "mid_weight": 1.0,
+      "onset_weight": 2.0
+    },
+    "optuna_R2_status": "rejected_worse_than_baseline"
+  },
+  "unit_system": "SI",
+  "comsol_coupling": "POW_V07_10_60_mb",
+  "geometry": {
+    "kind": "powder_bed_axisymmetric",
+    "description": "COMSOL POW_V07: Len=6 cm, Diam=4.5 mm.",
+    "L_m": 0.06,
+    "R_m": 0.00225,
+    "D_m": 0.0045
+  },
+  "mesh": {
+    "type": "uniform_structured",
+    "spacing_requested_m": {
+      "dz": 0.003,
+      "dr": 0.00045
+    },
+    "nodes": {
+      "Nz": 21,
+      "Nr": 6
+    },
+    "spacing_effective_m": {
+      "dz": 0.003,
+      "dr": 0.00045
+    }
+  },
+  "bed_structure": {
+    "epsilon": 0.3865222222,
+    "rho_s_kg_m3": 939.5019685,
+    "rho_a_kg_m3_bed": 576.3635799,
+    "d_p_m": 0.0001525,
+    "epsilon_formula": "0.375 + 0.34*(dp/Diam) from COMSOL e_dfm",
+    "m_dfm_kg": 0.0005499999999999999
+  },
+  "gas_phase": {
+    "species": [
+      "CO2",
+      "H2",
+      "CH4",
+      "H2O",
+      "N2"
+    ],
+    "inert_species": "N2",
+    "mixture_closure": "inert_is_remainder",
+    "state_variable": "C_i_mol_m3",
+    "kinetics_use_partial_pressure": true,
+    "partial_pressure_from": "ideal_gas",
+    "P_total_Pa": 101325,
+    "isobaric": true,
+    "R_J_mol_K": 8.314462618,
+    "velocity": {
+      "uniform": true,
+      "definition": "interstitial",
+      "Q_m3_s_at_T_ref": 3.333333e-06,
+      "T_ref_Q_K": 593.15,
+      "Fvol_L_min": 0.19999999999999998,
+      "note": "COMSOL Darcy inlet U0=Vel_D=Fvol_op/AreaT; same Fvol all phases.",
+      "model": "prescribed_u0",
+      "temperature_dependent": true
+    },
+    "diffusion": {
+      "isotropic": true,
+      "mode": "comsol_wilke_Dm",
+      "note": "COMSOL uses mixture DmCO2/DmH2/... (Wilke). FEniCS v1: constant D_m per species in transport.D_m_per_species.",
+      "comsol_extract": {
+        "T_op_K": 593.15,
+        "P_op_Pa": 101325,
+        "Vel_D_m_s": 0.20958675633500617,
+        "dp_dfm_m": 0.0001525,
+        "binary_diffusion_fuller_m2_s": {
+          "Diff12": 0.0013254778660818103,
+          "Diff13": 0.0006984713717994392,
+          "Diff14": 0.001047909246280966,
+          "Diff15": 0.00134912488258274,
+          "Diff21": 0.0013254778660818103,
+          "Diff23": 0.0006078802962049254,
+          "Diff24": 0.0009954880087824376,
+          "Diff25": 0.0012716969544453345,
+          "Diff31": 0.0006984713717994392,
+          "Diff32": 0.0006078802962049254,
+          "Diff34": 0.0006024944058010219,
+          "Diff35": 0.0007832171657593059,
+          "Diff41": 0.001047909246280966,
+          "Diff42": 0.0009954880087824376,
+          "Diff43": 0.0006024944058010219,
+          "Diff45": 0.0010625178813013021,
+          "Diff51": 0.00134912488258274,
+          "Diff52": 0.0012716969544453345,
+          "Diff53": 0.0007832171657593059,
+          "Diff54": 0.0010625178813013021
+        },
+        "wilke_Dm_m2_s": {
+          "initial_bed": {
+            "N2": 0.0013636577781203515,
+            "CO2": 0.0013254778660818103,
+            "H2": 0.0006984713717994392,
+            "CH4": 0.001047909246280966,
+            "H2O": 0.00134912488258274
+          },
+          "ads_inlet": {
+            "N2": 0.001991647060341285,
+            "CO2": 0.0012677861516599044,
+            "H2": 0.0006902726465097275,
+            "CH4": 0.0010435296472652295,
+            "H2O": 0.001342609766912141
+          },
+          "purge_inlet": {
+            "N2": 0.0013636577781203515,
+            "CO2": 0.0013254778660818103,
+            "H2": 0.0006984713717994392,
+            "CH4": 0.001047909246280966,
+            "H2O": 0.00134912488258274
+          },
+          "rxn_inlet": {
+            "N2": 0.00010842391402302937,
+            "CO2": 0.0007878849509271137,
+            "H2": 0.0015066406386116781,
+            "CH4": 0.0007341865561896456,
+            "H2O": 0.0009516765848737183
+          }
+        },
+        "DL_Dz_m2_s": {
+          "initial_bed": {
+            "N2": 0.0009705414348547902,
+            "CO2": 0.0009438154964278114,
+            "H2": 0.0005049109504301517,
+            "CH4": 0.0007495174625672204,
+            "H2O": 0.0009603684079784622
+          },
+          "ads_inlet": {
+            "N2": 0.0014101339324094435,
+            "CO2": 0.0009034312963324772,
+            "H2": 0.0004991718427273535,
+            "CH4": 0.0007464517432562049,
+            "H2O": 0.0009558078270090429
+          },
+          "purge_inlet": {
+            "N2": 0.0009705414348547902,
+            "CO2": 0.0009438154964278114,
+            "H2": 0.0005049109504301517,
+            "CH4": 0.0007495174625672204,
+            "H2O": 0.0009603684079784622
+          },
+          "rxn_inlet": {
+            "N2": 9.187772998666477e-05,
+            "CO2": 0.0005675004558195238,
+            "H2": 0.0010706294371987189,
+            "CH4": 0.0005299115795032961,
+            "H2O": 0.000682154599582147
+          }
+        },
+        "note": "Fuller correlation at T_op,P_op; COMSOL uses Maxwell–Stefan Vapor DB for Diff_ij (not stored numerically in .mph XML)."
+      },
+      "formula": "D_eff_i = D_mol_i(T) * epsilon / tau",
+      "D_eff_single_m2_s": 1e-05,
+      "tau": null,
+      "use_wakao_smith": false,
+      "wakao_smith_uses": {
+        "epsilon_from_bed": true,
+        "d_p_from_bed": true
+      },
+      "D_mol_per_species": {
+        "CO2": {
+          "D_mol_ref_m2_s": null,
+          "T_ref_K": null,
+          "T_exponent_n": null,
+          "D_mol_T": "D_mol_ref * (T/T_ref)^n"
+        },
+        "H2": {
+          "D_mol_ref_m2_s": null,
+          "T_ref_K": null,
+          "T_exponent_n": null,
+          "D_mol_T": "D_mol_ref * (T/T_ref)^n"
+        },
+        "CH4": {
+          "D_mol_ref_m2_s": null,
+          "T_ref_K": null,
+          "T_exponent_n": null,
+          "D_mol_T": "D_mol_ref * (T/T_ref)^n"
+        },
+        "H2O": {
+          "D_mol_ref_m2_s": null,
+          "T_ref_K": null,
+          "T_exponent_n": null,
+          "D_mol_T": "D_mol_ref * (T/T_ref)^n"
+        },
+        "N2": {
+          "D_mol_ref_m2_s": null,
+          "T_ref_K": null,
+          "T_exponent_n": null,
+          "D_mol_T": "D_mol_ref * (T/T_ref)^n"
+        }
+      }
+    },
+    "source_terms": "sheet_v2_darcy_diluted",
+    "momentum": {
+      "model": "darcy_mass_balance",
+      "permeability_m2": 1e-12,
+      "viscosity_Pa_s": 2.1e-05,
+      "inlet_bc_comsol": "velocity_U0_Vel_D",
+      "outlet_bc": "P_P_op"
+    },
+    "transport": {
+      "model": "diluted_species",
+      "D_z_mode": "dispersion_formula",
+      "D_z_velocity_basis": "superficial",
+      "D_m_per_species": {
+        "CO2": 0.001267786152,
+        "N2": 0.00199164706,
+        "CH4": 0.001043529647,
+        "H2O": 0.001342609767,
+        "H2": 0.000375
+      },
+      "D_m_per_species_note": "Seq H2 step4: D_m_mode=constant; H2 Dm≈0.25× Wilke rxn-inlet (0.001507→0.000375) to sharpen BT. Other species keep representative Wilke values.",
+      "dispersion_alpha": 0.7,
+      "dispersion_beta": 0.5,
+      "comsol_note": "FEniCS v1.1: Wilke D_m(y) from binary_diffusion_m2_s; D_z = DL(Dm,dp,Vel_D) = 0.7*Dm + 0.5*dp*Vel_D; velocity prescribed U0.",
+      "D_z_reference_m2_s": {
+        "CO2": 0.0009034312963324772,
+        "N2": 0.0014101339324094435,
+        "CH4": 0.0007464517432562049,
+        "H2O": 0.0009558078270090429,
+        "H2": 0.0010706294371987189
+      },
+      "D_m_per_species_fenics_map": {
+        "CO2": "ads_inlet",
+        "N2": "ads_inlet",
+        "CH4": "ads_inlet",
+        "H2O": "ads_inlet",
+        "H2": "rxn_inlet"
+      },
+      "D_m_mode": "wilke",
+      "D_m_mode_note": "Seq H2 step4: temporarily constant (not Wilke) so H2 Dm can be lowered independently. Revert to wilke after H2 study if desired.",
+      "diff_ij_source": "user",
+      "binary_diffusion_m2_s": {
+        "Diff12": 5.41e-05,
+        "Diff13": 0.00026,
+        "Diff14": 7.18e-05,
+        "Diff15": 8.6e-05,
+        "Diff21": 5.41e-05,
+        "Diff23": 0.000221,
+        "Diff24": 5.92e-05,
+        "Diff25": 6.96e-05,
+        "Diff31": 0.00026,
+        "Diff32": 0.000221,
+        "Diff34": 0.000235,
+        "Diff35": 0.000302,
+        "Diff41": 7.18e-05,
+        "Diff42": 5.92e-05,
+        "Diff43": 0.000235,
+        "Diff45": 8.76e-05,
+        "Diff51": 8.6e-05,
+        "Diff52": 6.96e-05,
+        "Diff53": 0.000302,
+        "Diff54": 8.76e-05
+      }
+    },
+    "boundaries_mass": {
+      "z_equals_L": {
+        "type": "neumann",
+        "dC_dz": 0
+      },
+      "z_equals_0": {
+        "type": "inlet_with_sopdt",
+        "fenics_bc": "danckwerts",
+        "comsol_equivalent": "Inflow FluxDanckwerts with c0=[cCO2_0,cN2_0,cH2_0,0,0]",
+        "sopdt": {
+          "enabled": false,
+          "note": "Inlet all species = cycle step (COMSOL s1/s2). No per_species lag; lab dynamics only on outlet_sopdt_filter. H2 inlet SOPDT removed to sharpen breakthrough vs exp.",
+          "Kp": 1,
+          "tau_s": 4.33207,
+          "zeta": 1.096,
+          "theta_p": 0.0,
+          "source": "POW_F200_10CO2_60H2_AJUSTE",
+          "per_species": {
+            "CO2": {
+              "tau_s": 4.33207,
+              "zeta": 1.096,
+              "theta_p": 0.0
+            },
+            "H2": {
+              "tau_s": 4.33207,
+              "zeta": 1.096,
+              "theta_p": 0.0
+            },
+            "CH4": {
+              "tau_s": 4.33207,
+              "zeta": 1.096,
+              "theta_p": 0.0
+            },
+            "H2O": {
+              "tau_s": 4.33207,
+              "zeta": 1.096,
+              "theta_p": 0.0
+            },
+            "N2": {
+              "tau_s": 4.33207,
+              "zeta": 1.096,
+              "theta_p": 0.0
+            }
+          }
+        },
+        "outlet_sopdt_filter": {
+          "enabled": true,
+          "note": "Outlet SOPDT (instrument). CO2 rising = ads Step1 (θ=109.58); do NOT overwrite with RXN fit or ads breaks. R1: H2/CH4 rising retuned vs rxn EXP (θ_H2=40, θ_CH4=51.83); H2/CH4/H2O falling:=rising for rxn overlays. CO2 falling left as ADS_OFF prior.",
+          "Kp": 0.9917,
+          "tau_s": 9.6107,
+          "zeta": 0.925,
+          "theta_p": 109.58,
+          "per_species": {
+            "CO2": {
+              "rising": {
+                "Kp": 0.9917,
+                "tau_s": 9.6107,
+                "zeta": 0.925,
+                "theta_p": 109.58
+              },
+              "falling": {
+                "Kp": 0.98666,
+                "tau_s": 19.973,
+                "zeta": 0.8404,
+                "theta_p": 108
+              }
+            },
+            "H2": {
+              "rising": {
+                "Kp": 0.9917,
+                "tau_s": 4.3179,
+                "zeta": 0.775,
+                "theta_p": 40.0
+              },
+              "falling": {
+                "Kp": 0.9917,
+                "tau_s": 4.3179,
+                "zeta": 0.775,
+                "theta_p": 40.0
+              }
+            },
+            "CH4": {
+              "rising": {
+                "Kp": 1.02,
+                "tau_s": 7.8,
+                "zeta": 0.6,
+                "theta_p": 51.83
+              },
+              "falling": {
+                "Kp": 1.02,
+                "tau_s": 7.8,
+                "zeta": 0.6,
+                "theta_p": 51.83
+              }
+            },
+            "H2O": {
+              "rising": {
+                "Kp": 1.02,
+                "tau_s": 7.8,
+                "zeta": 0.6,
+                "theta_p": 51.83
+              },
+              "falling": {
+                "Kp": 1.02,
+                "tau_s": 7.8,
+                "zeta": 0.6,
+                "theta_p": 51.83
+              }
+            }
+          },
+          "param_scope": "per_species"
+        }
+      }
+    },
+    "gas_properties": {
+      "model": "linear_in_T",
+      "per_species": {
+        "CO2": {
+          "rho_kg_m3": {
+            "a0": null,
+            "a1": null
+          },
+          "Cp_J_mol_K": {
+            "a0": null,
+            "a1": null
+          }
+        },
+        "H2": {
+          "rho_kg_m3": {
+            "a0": null,
+            "a1": null
+          },
+          "Cp_J_mol_K": {
+            "a0": null,
+            "a1": null
+          }
+        },
+        "CH4": {
+          "rho_kg_m3": {
+            "a0": null,
+            "a1": null
+          },
+          "Cp_J_mol_K": {
+            "a0": null,
+            "a1": null
+          }
+        },
+        "H2O": {
+          "rho_kg_m3": {
+            "a0": null,
+            "a1": null
+          },
+          "Cp_J_mol_K": {
+            "a0": null,
+            "a1": null
+          }
+        },
+        "N2": {
+          "rho_kg_m3": {
+            "a0": null,
+            "a1": null
+          },
+          "Cp_J_mol_K": {
+            "a0": null,
+            "a1": null
+          }
+        }
+      }
+    }
+  },
+  "solid_kinetics": {
+    "solid_species": [
+      "CO2_adsorbed"
+    ],
+    "q_CO2": {
+      "initial": 0
+    },
+    "adsorption_CO2": {
+      "model": "csc_ldf",
+      "csc": {
+        "q_e_mol_kg": 0.1681,
+        "K_C_Pa_inv": 245.7369,
+        "K_R": 2.010374,
+        "K_c_Pa_inv": 245.7369,
+        "a": 1.33012,
+        "P_unit": "atm",
+        "P_unit_note": "COMSOL CSC(P) declares argunit=atm: Kc/Kr are per-atm despite the *_Pa_inv key names. kinetics.py converts Pa->atm before evaluating."
+      },
+      "k_ads": 3.3333333333333335,
+      "k_ads_unit": "1/s",
+      "k_des": 1.7e-06,
+      "k_des_unit": "m3/(kg*s)",
+      "CO2_desorption_flux_to_gas": true,
+      "comsol_r_CO2": "k_des*Theta_CO2*cH2*s2",
+      "equation": "r_ads = k_ads (q_e - q_CO2) s_CO2; q_e = CSC(P_CO2); r_des = k_des C_H2 theta s_H2",
+      "langmuir": {
+        "k_ads": 3.3333333333333335,
+        "q_sat_mol_kg": 0.1681,
+        "K_Pa_inv": 245.7369
+      }
+    },
+    "methanation": {
+      "reaction": "CO2 + 4 H2 -> CH4 + 2 H2O",
+      "rate_law": "arrhenius_ph2_q",
+      "loading_driver": "q_CO2",
+      "arrhenius": {
+        "A_rxn": 16491.0,
+        "Ea_J_mol": 14560,
+        "m1": 1.7,
+        "m2": 5.0,
+        "loading_driver": "q_CO2",
+        "PH2_unit": "bar",
+        "PH2_unit_note": "COMSOL kinetics(k_rxn,PH2,qCO2) declares argunit bar: r_CH4 = k_rxn*PH2[bar]^m1*qCO2^m2.",
+        "m2_note": "Seq H2 fix step2: A_rxn=500, m2=4 (between prior m2=3/A=320 and COMSOL m2=7) to delay/sharpen H2 while keeping CH4 usable.",
+        "A_rxn_unit": "mol/(kg*s)",
+        "Ea_unit": "J/mol"
+      },
+      "stoichiometry_gas_source": {
+        "CO2": -1,
+        "H2": -4,
+        "CH4": 1,
+        "H2O": 2
+      },
+      "drivers": {
+        "CO2": "q_CO2",
+        "H2": "p_H2"
+      },
+      "expression": "r_CH4 = k_rxn * P_H2^m1 * q^m2; k_rxn = A_rxn * exp(-Ea/(R*T))",
+      "power_law": {
+        "k_ref": 16491.0,
+        "n_CO2": 5.0,
+        "n_H2": 1.7
+      }
+    }
+  },
+  "energy_thermal": {
+    "regime": "isothermal_v1",
+    "solve_2d_energy_balance": false,
+    "T_isothermal_K": 593.15
+  },
+  "simulation": {
+    "factory_id": "methanation_dfm",
+    "t_end_s": 880,
+    "dt_s": 0.02,
+    "dt_max_s": 0.1,
+    "adapt_tol_lo": 0.001,
+    "adapt_tol_hi": 0.005,
+    "adapt_event_pad_s": 20,
+    "balance": {
+      "enabled": true,
+      "every_n_steps": 25,
+      "note": "Holdups assembled every N steps (+ t=0 and t_end). F_in/F_out accumulate every step. Atom residual and conversion in export balance_summary."
+    },
+    "dt_note": "Adaptive x2 ladder in [dt_s, min(dt_max_s,0.1)]; dt_min near phase switches/SOPDT rise; LU of A reused while dt fixed. SOPDT Euler is substepped ≤0.05 s independently of PDE dt.",
+    "initial_C_mol_m3": {
+      "CO2": 0,
+      "H2": 0,
+      "CH4": 0,
+      "H2O": 0,
+      "N2": 20.54555571934388
+    },
+    "cycle": {
+      "phases": [
+        {
+          "id": "adsorption_s1",
+          "t_start_s": 0,
+          "t_end_s": 400,
+          "adsorption_active": true,
+          "methanation_active": false,
+          "Q_m3_s": 3.333333e-06,
+          "inlet_mole_fractions": {
+            "CO2": 0.0797,
+            "H2": 0,
+            "CH4": 0,
+            "H2O": 0,
+            "N2": 0.9203
+          },
+          "inlet_C_mol_m3": {
+            "CO2": 1.637480791,
+            "H2": 0,
+            "CH4": 0,
+            "H2O": 0,
+            "N2": 18.90807493
+          }
+        },
+        {
+          "id": "purge",
+          "t_start_s": 400,
+          "t_end_s": 580,
+          "adsorption_active": false,
+          "methanation_active": false,
+          "Q_m3_s": 3.333333e-06,
+          "inlet_mole_fractions": {
+            "CO2": 0,
+            "H2": 0,
+            "CH4": 0,
+            "H2O": 0,
+            "N2": 1
+          },
+          "inlet_C_mol_m3": {
+            "CO2": 0,
+            "H2": 0,
+            "CH4": 0,
+            "H2O": 0,
+            "N2": 20.54555572
+          }
+        },
+        {
+          "id": "reaction_s2",
+          "t_start_s": 580,
+          "t_end_s": 880,
+          "adsorption_active": false,
+          "methanation_active": true,
+          "Q_m3_s": 3.333333e-06,
+          "inlet_mole_fractions": {
+            "CO2": 0,
+            "H2": 0.578,
+            "CH4": 0,
+            "H2O": 0,
+            "N2": 0.422
+          },
+          "inlet_C_mol_m3": {
+            "CO2": 0,
+            "H2": 11.87533121,
+            "CH4": 0,
+            "H2O": 0,
+            "N2": 8.670224514
+          }
+        }
+      ]
+    },
+    "cycle_durations": {
+      "d_t_ads_s": 400,
+      "d_t_purg_s": 180,
+      "d_t_rxn_s": 300,
+      "s1": "ED_CO2",
+      "s2": "ED_H2"
+    }
+  },
+  "experimental_data": {
+    "enabled": false,
+    "pow_v07_results_xlsx": "data/POW_V07_results.xlsx",
+    "pow_v07_sheet": "POW_V07_10_60_data",
+    "comsol_outlet_txt": "data/POW_V08_10_60_out.txt",
+    "comsol_outlet_dt_s": 1,
+    "comsol_outlet_t0_s": 0,
+    "units_note": "COMSOL outlet from POW_V08_10_60_out.txt (yCO2,yH2,yCH4,n_dot,m_dot; t=0..880 s @1s). xlsx EXP_* = lab MS mole %; plot converts pct → C via P/RT. Old xlsx SIM_* ignored."
+  }
+}

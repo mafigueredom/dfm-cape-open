@@ -1,0 +1,10 @@
+**/__pycache__/
+**/*.pyc
+**/*.png
+**/*.xlsx
+**/*.mph
+data/
+COMSOLSimFIles/
+results/calibration/
+results/sopdt_compare/
+results/compare_pow/

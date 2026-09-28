@@ -1,0 +1,85 @@
+{
+  "schema": "cape_request_v1",
+  "factory_id": "methanation_dfm",
+  "config_path": "config/dfm_config.pow_v07_10_60_opt-1.json",
+  "C_t_export": "both",
+  "balance_tol": 0.001,
+  "feeds": {
+    "ads": {
+      "F_mol_s": 3.112963e-05,
+      "P_Pa": 101325,
+      "y": {
+        "124-38-9": 0.0797,
+        "7727-37-9": 0.9203
+      }
+    },
+    "purge": {
+      "F_mol_s": 1.400833e-05,
+      "P_Pa": 101325,
+      "y": {
+        "7727-37-9": 1.0
+      }
+    },
+    "rxn": {
+      "F_mol_s": 2.334722e-05,
+      "P_Pa": 101325,
+      "y": {
+        "1333-74-0": 0.578,
+        "7727-37-9": 0.422
+      }
+    },
+    "purge2": null
+  },
+  "parameters": {
+    "geometry": {
+      "L": 0.06,
+      "R": 0.00225,
+      "d_p": 0.0001525,
+      "epsilon": 0.3865222222,
+      "rho_a": 576.3635799
+    },
+    "adsorption": {
+      "k_ads": 3.3333333333333335,
+      "k_des": 1.7e-06,
+      "q_e": 0.1681,
+      "K_C": 245.7369,
+      "K_R": 2.010374,
+      "a_csc": 1.33012
+    },
+    "reaction": {
+      "A_rxn": 16491.0,
+      "Ea": 14560,
+      "m1": 1.7,
+      "m2": 5.0
+    },
+    "cycle": {
+      "n_cycles": 1,
+      "t_ads": 400,
+      "t_purge": 180,
+      "t_rxn": 300,
+      "t_purge2": 0
+    },
+    "outlet_sopdt": {
+      "enabled": true,
+      "per_species": {
+        "CO2": {
+          "rising": {"Kp": 0.9917, "tau_s": 9.6107, "zeta": 0.925, "theta_p": 109.58},
+          "falling": {"Kp": 0.98666, "tau_s": 19.973, "zeta": 0.8404, "theta_p": 108}
+        },
+        "H2": {
+          "rising": {"Kp": 0.9917, "tau_s": 4.3179, "zeta": 0.775, "theta_p": 40.0},
+          "falling": {"Kp": 0.9917, "tau_s": 4.3179, "zeta": 0.775, "theta_p": 40.0}
+        },
+        "CH4": {
+          "rising": {"Kp": 1.02, "tau_s": 7.8, "zeta": 0.6, "theta_p": 51.83},
+          "falling": {"Kp": 1.02, "tau_s": 7.8, "zeta": 0.6, "theta_p": 51.83}
+        },
+        "H2O": {
+          "rising": {"Kp": 1.02, "tau_s": 7.8, "zeta": 0.6, "theta_p": 51.83},
+          "falling": {"Kp": 1.02, "tau_s": 7.8, "zeta": 0.6, "theta_p": 51.83}
+        }
+      }
+    }
+  },
+  "note_feeds": "Convention B: F_k = F_bed * t_k / T with F_bed = Q*P/(R*T_bed), T=880 s, Q=3.333333e-6 m3/s."
+}

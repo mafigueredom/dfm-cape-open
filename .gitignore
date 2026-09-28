@@ -1,0 +1,5 @@
+**/__pycache__/
+**/*.pyc
+com/DfmMethanation/bin/
+com/DfmMethanation/obj/
+*.user
