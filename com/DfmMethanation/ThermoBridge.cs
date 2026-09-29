@@ -224,12 +224,16 @@ namespace PhD.DfmMethanation
         }
     }
 
+    // Dual, so the CLR uses the vtable. IDispatch::Invoke asks TEA for a
+    // type library and TEA returns TYPE_E_ELEMENTNOTFOUND. Slots follow
+    // the CAPE-OPEN dispids: GetCompoundList is the second method.
     [ComImport]
     [Guid("678C0A9D-7D66-11D2-A67D-00105A42887F")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
     internal interface ICapeThermoCompounds
     {
-        [DispId(2)]
+        void GetCompoundConstant(object props, object compIds);
+
         void GetCompoundList(
             [MarshalAs(UnmanagedType.Struct)] out object compIds,
             [MarshalAs(UnmanagedType.Struct)] out object formulae,
@@ -239,18 +243,27 @@ namespace PhD.DfmMethanation
             [MarshalAs(UnmanagedType.Struct)] out object casnos);
     }
 
+    // GetOverallProp is dispid 4, SetOverallProp is dispid 10.
     [ComImport]
     [Guid("678C0A9B-7D66-11D2-A67D-00105A42887F")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
     internal interface ICapeThermoMaterial11
     {
-        [DispId(4)]
+        void ClearAllProps();
+        void CopyFromMaterial(object source);
+        object CreateMaterial();
+
         void GetOverallProp(
             [MarshalAs(UnmanagedType.BStr)] string property,
             [MarshalAs(UnmanagedType.BStr)] string basis,
             [MarshalAs(UnmanagedType.Struct)] out object results);
 
-        [DispId(10)]
+        void GetOverallTPFraction(string phaseLabel, out object temperature, out object pressure, out object composition);
+        void GetPresentPhases(out object phaseLabels, out object phaseStatus);
+        void GetSinglePhaseProp(string property, string phaseLabel, string basis, out object results);
+        void GetTPFraction(string phaseLabel, out object temperature, out object pressure, out object composition);
+        void GetTwoPhaseProp(string property, object phaseLabels, string basis, out object results);
+
         void SetOverallProp(
             [MarshalAs(UnmanagedType.BStr)] string property,
             [MarshalAs(UnmanagedType.BStr)] string basis,
