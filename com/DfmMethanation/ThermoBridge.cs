@@ -406,7 +406,7 @@ namespace PhD.DfmMethanation
             return arr;
         }
 
-        public static void FlashEquilibrium(object mo)
+        public static bool FlashEquilibrium(object mo)
         {
             object raw = null;
             try
@@ -417,22 +417,69 @@ namespace PhD.DfmMethanation
             {
                 ClearError();
                 CapeTrace.Write("Flash no equilibrium routine " + ex.GetBaseException().Message);
-                return;
+                return false;
             }
             try
             {
                 ((ICapeThermoEquilibriumRoutine11)raw).CalcEquilibrium(
                     "temperature", "pressure", "Unspecified");
                 CapeTrace.Write("CalcEquilibrium temperature pressure ok");
+                return true;
             }
             catch (Exception ex)
             {
                 ClearError();
                 CapeTrace.Write("CalcEquilibrium " + ex.GetBaseException().Message);
+                return false;
             }
             finally
             {
                 ReleaseRcw(raw);
+            }
+        }
+
+        public static void MarkVaporFlashed(object mo, double[] fraction, double temperature, double pressure)
+        {
+            // CAPE_ATEQUILIBRIUM is 1. COFE rejects an outlet whose phases stay at 0.
+            // A single-phase gas makes TEA's own TP flash return an error, so the
+            // vapor phase is stored directly after the overall composition.
+            object raw = null;
+            try
+            {
+                raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+                var mat = (ICapeThermoMaterial11)raw;
+                TryPhaseProp(mat, "fraction", "Vapor", "Mole", fraction);
+                TryPhaseProp(mat, "phaseFraction", "Vapor", "Mole", new[] { 1.0 });
+                TryPhaseProp(mat, "temperature", "Vapor", "", new[] { temperature });
+                TryPhaseProp(mat, "pressure", "Vapor", "", new[] { pressure });
+                mat.SetPresentPhases(new[] { "Vapor", "Liquid" }, new[] { 1, 0 });
+                CapeTrace.Write("SetPresentPhases Vapor equilibrium");
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("MarkVaporFlashed " + ex.GetBaseException().Message);
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
+        }
+
+        static void TryPhaseProp(
+            ICapeThermoMaterial11 mat, string property, string phase, string basis, double[] values)
+        {
+            try
+            {
+                mat.SetSinglePhaseProp(property, phase, basis, values);
+                CapeTrace.Write("SetSinglePhaseProp " + property + " " + phase + " ok");
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write(
+                    "SetSinglePhaseProp " + property + " " + phase + " "
+                    + ex.GetBaseException().Message);
             }
         }
 
@@ -543,6 +590,13 @@ namespace PhD.DfmMethanation
         void SetPresentPhases(
             [MarshalAs(UnmanagedType.Struct)] object phaseLabels,
             [MarshalAs(UnmanagedType.Struct)] object phaseStatus);
+
+        // Dispid 12. Must stay immediately after SetPresentPhases.
+        void SetSinglePhaseProp(
+            [MarshalAs(UnmanagedType.BStr)] string property,
+            [MarshalAs(UnmanagedType.BStr)] string phaseLabel,
+            [MarshalAs(UnmanagedType.BStr)] string basis,
+            [MarshalAs(UnmanagedType.Struct)] object values);
     }
 
     // GetPhaseList is dispid 3.

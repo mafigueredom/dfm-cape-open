@@ -399,7 +399,8 @@ namespace PhD.DfmMethanation
                 ThermoBridge.TrySetOverall(mo, "temperature", t);
                 ThermoBridge.TrySetOverall(mo, "pressure", p);
                 ThermoBridge.EnsurePhases(mo);
-                ThermoBridge.FlashEquilibrium(mo);
+                if (!ThermoBridge.FlashEquilibrium(mo))
+                    ThermoBridge.MarkVaporFlashed(mo, fraction, t, p);
                 ThermoBridge.ClearError();
                 ThermoBridge.LogPhases(mo, "after");
                 CapeTrace.Write(
