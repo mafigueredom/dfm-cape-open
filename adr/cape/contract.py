@@ -272,7 +272,7 @@ def parse_cape_request(data: dict[str, Any]) -> dict[str, Any]:
 
 def load_cape_request(path: Path | str) -> dict[str, Any]:
     p = Path(path)
-    data = json.loads(p.read_text(encoding="utf-8"))
+    data = json.loads(p.read_text(encoding="utf-8-sig"))
     return parse_cape_request(data)
 
 

@@ -154,35 +154,48 @@ namespace PhD.DfmMethanation
 
         public void Calculate()
         {
-            CapeTrace.Guard("Calculate", () =>
-            {
-            string msg = "";
-            if (!Validate(ref msg))
-                throw new InvalidOperationException(msg);
-
-            var request = BuildRequest();
-            var work = Path.Combine(Path.GetTempPath(), "dfm-cape-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(work);
+            // A failed HRESULT from this callback is unhandled in COFE and the process exits.
+            CapeTrace.Write(">> Calculate");
             try
             {
-                File.WriteAllText(
-                    Path.Combine(work, "cape_request.json"),
-                    _json.Serialize(request),
-                    Encoding.UTF8);
-                var extra = new StringBuilder();
-                var tEnd = P("t_end_override").AsDouble();
-                if (tEnd > 0.0)
-                    extra.Append(" --t-end ").Append(tEnd.ToString(CultureInfo.InvariantCulture));
-                var raw = EngineClient.Run(work, P("docker_image").AsString(), extra.ToString());
-                _lastResult = _json.Deserialize<Dictionary<string, object>>(raw);
-                ApplyProduct();
-                ApplyOutputs();
+                string msg = "";
+                if (!Validate(ref msg))
+                    throw new InvalidOperationException(msg);
+
+                var request = BuildRequest();
+                var work = Path.Combine(Path.GetTempPath(), "dfm-cape-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(work);
+                try
+                {
+                    File.WriteAllText(
+                        Path.Combine(work, "cape_request.json"),
+                        _json.Serialize(request),
+                        new UTF8Encoding(false));
+                    var extra = new StringBuilder();
+                    var tEnd = P("t_end_override").AsDouble();
+                    if (tEnd > 0.0)
+                        extra.Append(" --t-end ").Append(tEnd.ToString(CultureInfo.InvariantCulture));
+                    var raw = EngineClient.Run(work, P("docker_image").AsString(), extra.ToString());
+                    _lastResult = _json.Deserialize<Dictionary<string, object>>(raw);
+                    ApplyProduct();
+                    ApplyOutputs();
+                    _val = CapeValidationStatus.CAPE_VALID;
+                    CapeTrace.Write("<< Calculate");
+                }
+                finally
+                {
+                    try { Directory.Delete(work, true); } catch { }
+                }
             }
-            finally
+            catch (Exception ex)
             {
-                try { Directory.Delete(work, true); } catch { }
+                _val = CapeValidationStatus.CAPE_INVALID;
+                var text = ex.GetBaseException().Message;
+                if (text.Length > 400)
+                    text = text.Substring(0, 400);
+                ComponentDescription = text;
+                CapeTrace.Write("!! Calculate" + Environment.NewLine + ex);
             }
-            });
         }
 
         public string ProduceReport()
