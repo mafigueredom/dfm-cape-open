@@ -372,6 +372,8 @@ namespace PhD.DfmMethanation
             RestrictedToList = restricted;
         }
 
+        public string[] Choices => _options;
+
         public CapeParamType Type
         {
             get { CapeTrace.Write("Type " + ComponentName + " OPTION"); return CapeParamType.CAPE_OPTION; }

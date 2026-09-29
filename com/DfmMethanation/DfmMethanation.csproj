@@ -12,6 +12,8 @@
     <Description>CAPE-OPEN 1.1 DFM methanation unit (thin COM wrapper around Docker engine)</Description>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Web.Extensions" />
   </ItemGroup>
 </Project>

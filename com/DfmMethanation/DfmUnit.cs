@@ -89,13 +89,21 @@ namespace PhD.DfmMethanation
 
         public void Edit()
         {
-            // S_OK with no dialog makes COFE dereference a missing editor.
-            // E_NOTIMPL tells it to open its own parameter list.
             CapeTrace.Guard("Edit", () =>
             {
-                throw new COMException(
-                    "No custom editor. Use the CAPE-OPEN parameter list.",
-                    unchecked((int)0x80004001));
+                var inputs = new List<CapeParameter>();
+                foreach (var item in _params.All)
+                {
+                    var p = (CapeParameter)item;
+                    if (p.Mode == CapeParamMode.CAPE_INPUT || p.Mode == CapeParamMode.CAPE_INPUT_OUTPUT)
+                        inputs.Add(p);
+                }
+                using (var dlg = new ParameterEditorForm(inputs))
+                {
+                    CapeTrace.Write("Edit show");
+                    var result = dlg.ShowDialog();
+                    CapeTrace.Write("Edit closed " + result);
+                }
             });
         }
 
