@@ -189,6 +189,7 @@ namespace PhD.DfmMethanation
                     _sharedResult = _lastResult;
                     WriteResultFile();
                     ApplyOutputs();
+                    WriteProduct();
                     _val = CapeValidationStatus.CAPE_VALID;
                     CapeTrace.Write("<< Calculate");
                 }
@@ -349,6 +350,71 @@ namespace PhD.DfmMethanation
                 var ok = Convert.ToBoolean(outputs["balance_ok"], CultureInfo.InvariantCulture);
                 SolvedOutputs.Values["balance_ok"] = ok;
                 P("balance_ok").value = ok;
+            }
+        }
+
+        void WriteProduct()
+        {
+            // COFE aborts with "did not flash outlet stream 4" unless Product
+            // is flashed before Calculate returns. Stream 4 is this outlet.
+            CapeTrace.Write(">> WriteProduct");
+            var mo = _product.MaterialObject;
+            if (mo == null)
+            {
+                CapeTrace.Write("WriteProduct no product");
+                return;
+            }
+            try
+            {
+                var product = Dict(_lastResult, "product");
+                var fss = Dict(product, "F_ss_mol_s");
+                var cas = ThermoBridge.GetCasNumbers(mo);
+                var flow = new double[cas.Length];
+                double total = 0.0;
+                for (int i = 0; i < cas.Length; i++)
+                {
+                    if (!CasToSp.TryGetValue(cas[i] ?? "", out var sp))
+                        continue;
+                    var fi = Math.Max(0.0, ToD(fss, sp));
+                    flow[i] = fi;
+                    total += fi;
+                }
+                if (!(total > 0.0))
+                {
+                    CapeTrace.Write("WriteProduct zero flow");
+                    return;
+                }
+                var fraction = new double[cas.Length];
+                for (int i = 0; i < cas.Length; i++)
+                    fraction[i] = flow[i] / total;
+                double t = ToD(product, "T_K");
+                double p = ToD(product, "P_Pa");
+                if (!(t > 0.0))
+                    t = 593.15;
+                if (!(p > 0.0))
+                    p = 101325.0;
+                ThermoBridge.LogPhases(mo, "before");
+                ThermoBridge.TrySetOverall(mo, "fraction", fraction, "mole");
+                ThermoBridge.TrySetOverall(mo, "flow", flow, "mole");
+                ThermoBridge.TrySetOverall(mo, "temperature", t);
+                ThermoBridge.TrySetOverall(mo, "pressure", p);
+                ThermoBridge.EnsurePhases(mo);
+                ThermoBridge.FlashEquilibrium(mo);
+                ThermoBridge.ClearError();
+                ThermoBridge.LogPhases(mo, "after");
+                CapeTrace.Write(
+                    "<< WriteProduct F_mol_s=" + total.ToString("G6", CultureInfo.InvariantCulture)
+                    + " T=" + t.ToString(CultureInfo.InvariantCulture)
+                    + " P=" + p.ToString(CultureInfo.InvariantCulture));
+            }
+            catch (Exception ex)
+            {
+                ThermoBridge.ClearError();
+                CapeTrace.Write("!! WriteProduct " + ex.GetBaseException().Message);
+            }
+            finally
+            {
+                ThermoBridge.ReleaseRcw(mo);
             }
         }
 

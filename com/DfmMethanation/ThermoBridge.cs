@@ -225,24 +225,30 @@ namespace PhD.DfmMethanation
                 double[] numbers = value is double[] direct
                     ? direct
                     : new[] { Convert.ToDouble(value, CultureInfo.InvariantCulture) };
-                var payload = OneBased(numbers);
+                // TEA accepted a 0-based array for flow and fraction. A 1-based
+                // array came back as 0x80040501, so that form is only a fallback.
+                var payloads = new object[] { numbers, OneBased(numbers) };
                 Exception last = null;
-                foreach (var name in names)
+                foreach (var payload in payloads)
                 {
-                    foreach (var b in BasisForms(basis))
+                    var bound = payload is double[] ? "lb=0" : "lb=1";
+                    foreach (var name in names)
                     {
-                        try
+                        foreach (var b in BasisForms(basis))
                         {
-                            mat.SetOverallProp(name, b, payload);
-                            CapeTrace.Write(
-                                "SetOverallProp " + name + " " + b + " ok n=" + numbers.Length + " lb=1");
-                            return;
-                        }
-                        catch (Exception ex)
-                        {
-                            last = ex;
-                            ClearError();
-                            CapeTrace.Write("SetOverallProp " + name + " " + b + " " + ex.Message);
+                            try
+                            {
+                                mat.SetOverallProp(name, b, payload);
+                                CapeTrace.Write(
+                                    "SetOverallProp " + name + " " + b + " ok n=" + numbers.Length + " " + bound);
+                                return;
+                            }
+                            catch (Exception ex)
+                            {
+                                last = ex;
+                                ClearError();
+                                CapeTrace.Write("SetOverallProp " + name + " " + b + " " + bound + " " + ex.Message);
+                            }
                         }
                     }
                 }
@@ -260,12 +266,94 @@ namespace PhD.DfmMethanation
         {
             if (string.IsNullOrEmpty(basis) ||
                 basis.Equals("undefined", StringComparison.OrdinalIgnoreCase))
-                return new[] { "UNDEFINED" };
+                return new[] { "UNDEFINED", "" };
             if (basis.Equals("mole", StringComparison.OrdinalIgnoreCase))
                 return new[] { "Mole", "mole" };
             if (basis.Equals("mass", StringComparison.OrdinalIgnoreCase))
                 return new[] { "Mass", "mass" };
             return new[] { basis };
+        }
+
+        static readonly Guid IidEquilibrium = new Guid("678C0AA0-7D66-11D2-A67D-00105A42887F");
+
+        public static void LogPhases(object mo, string tag)
+        {
+            object raw = null;
+            try
+            {
+                raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+                object labels, status;
+                ((ICapeThermoMaterial11)raw).GetPresentPhases(out labels, out status);
+                CapeTrace.Write(
+                    tag + " phases=" + string.Join(",", ToStrings(labels))
+                    + " status=" + string.Join(",", ToStrings(status)));
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write(tag + " phases " + ex.GetBaseException().Message);
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
+        }
+
+        public static void EnsurePhases(object mo)
+        {
+            object raw = null;
+            try
+            {
+                raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+                var mat = (ICapeThermoMaterial11)raw;
+                object labels, status;
+                mat.GetPresentPhases(out labels, out status);
+                if (ToStrings(labels).Length > 0)
+                    return;
+                mat.SetPresentPhases(
+                    new[] { "Vapor", "Liquid" },
+                    new[] { "Cape_UnknownPhaseStatus", "Cape_UnknownPhaseStatus" });
+                CapeTrace.Write("SetPresentPhases Vapor,Liquid");
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("SetPresentPhases " + ex.GetBaseException().Message);
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
+        }
+
+        public static void FlashEquilibrium(object mo)
+        {
+            object raw = null;
+            try
+            {
+                raw = AsInterface(mo, IidEquilibrium, typeof(ICapeThermoEquilibriumRoutine11));
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("Flash no equilibrium routine " + ex.GetBaseException().Message);
+                return;
+            }
+            try
+            {
+                ((ICapeThermoEquilibriumRoutine11)raw).CalcEquilibrium(
+                    "temperature", "pressure", "Unspecified");
+                CapeTrace.Write("CalcEquilibrium temperature pressure ok");
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("CalcEquilibrium " + ex.GetBaseException().Message);
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
         }
 
         public static void FlashTP(object mo)
@@ -370,5 +458,22 @@ namespace PhD.DfmMethanation
             [MarshalAs(UnmanagedType.BStr)] string property,
             [MarshalAs(UnmanagedType.BStr)] string basis,
             [MarshalAs(UnmanagedType.Struct)] object values);
+
+        // Dispid 11. Must stay immediately after SetOverallProp.
+        void SetPresentPhases(
+            [MarshalAs(UnmanagedType.Struct)] object phaseLabels,
+            [MarshalAs(UnmanagedType.Struct)] object phaseStatus);
+    }
+
+    // Dispid 1 on this interface, so it is the first vtable method.
+    [ComImport]
+    [Guid("678C0AA0-7D66-11D2-A67D-00105A42887F")]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    internal interface ICapeThermoEquilibriumRoutine11
+    {
+        void CalcEquilibrium(
+            [MarshalAs(UnmanagedType.Struct)] object specification1,
+            [MarshalAs(UnmanagedType.Struct)] object specification2,
+            [MarshalAs(UnmanagedType.BStr)] string solutionType);
     }
 }
