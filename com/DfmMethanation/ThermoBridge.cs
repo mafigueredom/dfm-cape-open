@@ -1,25 +1,19 @@
 using System;
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace PhD.DfmMethanation
 {
     /// <summary>
-    /// Late-bound ICapeThermoMaterial (1.1) with MaterialObject (1.0) fallback.
-    /// SI: K, Pa, mol/s, mole fraction. Does not read packed-bed D_z.
+    /// ICapeThermoMaterial 1.1 plus ICapeThermoCompounds for the compound list.
+    /// Those are different COM interfaces on the same TEA stream. SI: K, Pa, mol/s.
     /// </summary>
     internal static class ThermoBridge
     {
-        static object Invoke(object mo, string method, params object[] args)
-        {
-            return mo.GetType().InvokeMember(
-                method,
-                BindingFlags.InvokeMethod | BindingFlags.GetProperty,
-                null,
-                mo,
-                args,
-                CultureInfo.InvariantCulture);
-        }
+        static readonly Guid IidMaterial = new Guid("678C0A9B-7D66-11D2-A67D-00105A42887F");
+        static readonly Guid IidCompounds = new Guid("678C0A9D-7D66-11D2-A67D-00105A42887F");
+        static readonly Guid IidMaterial10 = new Guid("678C0994-7D66-11D2-A67D-00105A42887F");
 
         public static double[] ToDoubles(object raw)
         {
@@ -59,94 +53,176 @@ namespace PhD.DfmMethanation
 
         public static double GetOverallScalar(object mo, string property, string basis = null)
         {
-            try
-            {
-                var v = basis == null
-                    ? Invoke(mo, "GetOverallProp", property)
-                    : Invoke(mo, "GetOverallProp", property, basis);
-                var d = ToDoubles(v);
-                if (d.Length == 0)
-                    throw new InvalidOperationException("empty " + property);
-                return d[0];
-            }
-            catch
-            {
-                var v = Invoke(mo, "GetProp", property, "overall", Type.Missing, Type.Missing, basis ?? Type.Missing);
-                return ToDoubles(v)[0];
-            }
+            var values = GetOverall(mo, property, basis);
+            if (values.Length == 0)
+                throw new InvalidOperationException("empty " + property);
+            return values[0];
         }
 
         public static double[] GetOverallVector(object mo, string property, string basis)
         {
-            try
+            return GetOverall(mo, property, basis);
+        }
+
+        static double[] GetOverall(object mo, string property, string basis)
+        {
+            var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+            var b = string.IsNullOrEmpty(basis) ? "undefined" : basis;
+            var names = property == "totalFlow"
+                ? new[] { "flow", "totalFlow" }
+                : new[] { property };
+            Exception last = null;
+            foreach (var name in names)
             {
-                return ToDoubles(Invoke(mo, "GetOverallProp", property, basis));
+                try
+                {
+                    var values = ToDoubles(mat.GetOverallProp(name, b));
+                    CapeTrace.Write("GetOverallProp " + name + " " + b + " n=" + values.Length);
+                    return values;
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                    CapeTrace.Write("GetOverallProp " + name + " " + b + " " + ex.Message);
+                }
             }
-            catch
-            {
-                return ToDoubles(Invoke(mo, "GetProp", property, "overall", Type.Missing, Type.Missing, basis));
-            }
+            throw new InvalidOperationException(
+                "GetOverallProp " + property + ": " + (last == null ? "failed" : last.Message),
+                last);
         }
 
         public static string[] GetCasNumbers(object mo)
         {
-            object ids = null, formulae = null, names = null, tb = null, mw = null, cas = null;
-            try
+            var compounds = (ICapeThermoCompounds)AsInterface(
+                mo, IidCompounds, typeof(ICapeThermoCompounds));
+            object compIds, formulae, names, boilTemps, molwts, casnos;
+            compounds.GetCompoundList(
+                out compIds, out formulae, out names, out boilTemps, out molwts, out casnos);
+            var cas = ToStrings(casnos);
+            var ids = ToStrings(compIds);
+            CapeTrace.Write(
+                "GetCompoundList cas=" + string.Join(",", cas) + " ids=" + string.Join(",", ids));
+            bool anyCas = false;
+            foreach (var c in cas)
             {
-                var args = new object[] { ids, formulae, names, tb, mw, cas };
-                mo.GetType().InvokeMember(
-                    "GetCompoundList",
-                    BindingFlags.InvokeMethod,
-                    null,
-                    mo,
-                    args,
-                    new ParameterModifier[] { new ParameterModifier(6) },
-                    CultureInfo.InvariantCulture,
-                    null);
-                cas = args[5];
-                if (cas != null)
-                    return ToStrings(cas);
+                if (!string.IsNullOrWhiteSpace(c))
+                    anyCas = true;
             }
-            catch
-            {
-                // 1.0: CompIds / GetComponentIds
-            }
-            try
-            {
-                return ToStrings(Invoke(mo, "get_ComponentIds"));
-            }
-            catch
-            {
-                return ToStrings(Invoke(mo, "GetComponentIds"));
-            }
+            if (!anyCas)
+                throw new InvalidOperationException(
+                    "TEA returned no CAS numbers. Compound ids: " + string.Join(", ", ids));
+            return cas;
         }
 
         public static void SetOverall(object mo, string property, object value, string basis = null)
         {
-            try
+            var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+            var b = string.IsNullOrEmpty(basis) ? "undefined" : basis;
+            var names = property == "totalFlow"
+                ? new[] { "flow", "totalFlow" }
+                : new[] { property };
+            Exception last = null;
+            foreach (var name in names)
             {
-                if (basis == null)
-                    Invoke(mo, "SetOverallProp", property, value);
-                else
-                    Invoke(mo, "SetOverallProp", property, basis, value);
+                try
+                {
+                    mat.SetOverallProp(name, b, value);
+                    CapeTrace.Write("SetOverallProp " + name + " " + b + " ok");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                    CapeTrace.Write("SetOverallProp " + name + " " + b + " " + ex.Message);
+                }
             }
-            catch
-            {
-                Invoke(mo, "SetProp", property, "overall", Type.Missing, Type.Missing, basis ?? Type.Missing, value);
-            }
+            throw new InvalidOperationException(
+                "SetOverallProp " + property + ": " + (last == null ? "failed" : last.Message),
+                last);
         }
 
         public static void FlashTP(object mo)
         {
+            object legacy;
             try
             {
-                Invoke(mo, "CalcEquilibrium", "TP", Type.Missing);
+                legacy = AsInterface(mo, IidMaterial10, null);
             }
-            catch
+            catch (Exception ex)
             {
-                try { Invoke(mo, "CalcEquilibrium", "TP"); }
-                catch { Invoke(mo, "Equilibrium", "TP"); }
+                CapeTrace.Write("FlashTP no thermo 1.0 " + ex.Message);
+                return;
+            }
+            try
+            {
+                legacy.GetType().InvokeMember(
+                    "CalcEquilibrium",
+                    BindingFlags.InvokeMethod,
+                    null,
+                    legacy,
+                    new object[] { "TP" },
+                    CultureInfo.InvariantCulture);
+                CapeTrace.Write("FlashTP ok");
+            }
+            catch (Exception ex)
+            {
+                CapeTrace.Write("FlashTP " + ex.Message);
             }
         }
+
+        static object AsInterface(object mo, Guid iid, Type typedAs)
+        {
+            IntPtr unk = IntPtr.Zero;
+            IntPtr p = IntPtr.Zero;
+            try
+            {
+                unk = Marshal.GetIUnknownForObject(mo);
+                Guid g = iid;
+                int hr = Marshal.QueryInterface(unk, ref g, out p);
+                if (hr < 0 || p == IntPtr.Zero)
+                    throw new InvalidOperationException(
+                        "QueryInterface " + iid.ToString("B") + " failed 0x" + hr.ToString("X8"));
+                return typedAs == null
+                    ? Marshal.GetObjectForIUnknown(p)
+                    : Marshal.GetTypedObjectForIUnknown(p, typedAs);
+            }
+            finally
+            {
+                if (p != IntPtr.Zero)
+                    Marshal.Release(p);
+                if (unk != IntPtr.Zero)
+                    Marshal.Release(unk);
+            }
+        }
+    }
+
+    [ComImport]
+    [Guid("678C0A9D-7D66-11D2-A67D-00105A42887F")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    internal interface ICapeThermoCompounds
+    {
+        void GetCompoundList(
+            [MarshalAs(UnmanagedType.Struct)] out object compIds,
+            [MarshalAs(UnmanagedType.Struct)] out object formulae,
+            [MarshalAs(UnmanagedType.Struct)] out object names,
+            [MarshalAs(UnmanagedType.Struct)] out object boilTemps,
+            [MarshalAs(UnmanagedType.Struct)] out object molwts,
+            [MarshalAs(UnmanagedType.Struct)] out object casnos);
+    }
+
+    [ComImport]
+    [Guid("678C0A9B-7D66-11D2-A67D-00105A42887F")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    internal interface ICapeThermoMaterial11
+    {
+        [return: MarshalAs(UnmanagedType.Struct)]
+        object GetOverallProp(
+            [MarshalAs(UnmanagedType.BStr)] string property,
+            [MarshalAs(UnmanagedType.BStr)] string basis);
+
+        void SetOverallProp(
+            [MarshalAs(UnmanagedType.BStr)] string property,
+            [MarshalAs(UnmanagedType.BStr)] string basis,
+            [MarshalAs(UnmanagedType.Struct)] object values);
     }
 }

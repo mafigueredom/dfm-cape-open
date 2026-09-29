@@ -255,6 +255,7 @@ namespace PhD.DfmMethanation
 
         Dictionary<string, object> ReadFeed(CapePort port, bool required)
         {
+            CapeTrace.Write("ReadFeed " + port.ComponentName);
             var mo = port.MaterialObject;
             if (mo == null)
             {
