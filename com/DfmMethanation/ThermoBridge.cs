@@ -150,6 +150,30 @@ namespace PhD.DfmMethanation
             return cas;
         }
 
+        [DllImport("oleaut32.dll", PreserveSig = true)]
+        static extern int SetErrorInfo(int dwReserved, IntPtr perrinfo);
+
+        public static void ClearError()
+        {
+            try { SetErrorInfo(0, IntPtr.Zero); }
+            catch { }
+        }
+
+        public static bool TrySetOverall(object mo, string property, object value, string basis = null)
+        {
+            try
+            {
+                SetOverall(mo, property, value, basis);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("TrySetOverall skip " + property + " " + ex.GetBaseException().Message);
+                return false;
+            }
+        }
+
         public static void SetOverall(object mo, string property, object value, string basis = null)
         {
             var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));

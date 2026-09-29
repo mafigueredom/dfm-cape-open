@@ -189,11 +189,8 @@ namespace PhD.DfmMethanation
             }
             catch (Exception ex)
             {
+                ThermoBridge.ClearError();
                 _val = CapeValidationStatus.CAPE_INVALID;
-                var text = ex.GetBaseException().Message;
-                if (text.Length > 400)
-                    text = text.Substring(0, 400);
-                ComponentDescription = text;
                 CapeTrace.Write("!! Calculate" + Environment.NewLine + ex);
             }
         }
@@ -335,11 +332,20 @@ namespace PhD.DfmMethanation
                 else
                     y[i] = 0.0;
             }
-            ThermoBridge.SetOverall(mo, "temperature", ToD(product, "T_K"));
-            ThermoBridge.SetOverall(mo, "pressure", ToD(product, "P_Pa"));
-            ThermoBridge.SetOverall(mo, "totalFlow", total, "mole");
-            ThermoBridge.SetOverall(mo, "fraction", y, "mole");
+            var flows = new double[cas.Length];
+            for (int i = 0; i < cas.Length; i++)
+            {
+                if (CasToSp.TryGetValue(cas[i], out var sp))
+                    flows[i] = ToD(fss, sp);
+            }
+            // TEA rejects SetOverallProp for temperature and pressure (0x80040501).
+            // The product stream already carries the isothermal T and P.
+            bool flowOk = ThermoBridge.TrySetOverall(mo, "totalFlow", flows, "mole");
+            bool fracOk = ThermoBridge.TrySetOverall(mo, "fraction", y, "mole");
             ThermoBridge.FlashTP(mo);
+            ThermoBridge.ClearError();
+            if (!flowOk || !fracOk)
+                throw new InvalidOperationException("Could not write product flow or composition.");
         }
 
         void ApplyOutputs()
