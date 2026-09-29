@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Web.Script.Serialization;
 using Microsoft.Win32;
@@ -20,7 +21,7 @@ namespace PhD.DfmMethanation
     [ProgId(Guids.ProgId)]
     [ClassInterface(ClassInterfaceType.None)]
     [ComDefaultInterface(typeof(ICapeUnit))]
-    public class DfmUnit : ICapeUnit, ICapeUtilities, ICapeIdentification, ICapeUnitReport
+    public class DfmUnit : ICapeUnit, ICapeUtilities, ICapeIdentification, ICapeUnitReport, IPersistStream, IPersistStreamInit
     {
         static readonly string[] Species = { "CO2", "H2", "CH4", "H2O", "N2" };
         static readonly Dictionary<string, string> CasToSp = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -111,6 +112,84 @@ namespace PhD.DfmMethanation
         public void Terminate()
         {
             CapeTrace.Write("Terminate");
+        }
+
+        public void GetClassID(out Guid classId)
+        {
+            classId = new Guid(Guids.Clsid);
+            CapeTrace.Write("Persist GetClassID");
+        }
+
+        public int IsDirty()
+        {
+            CapeTrace.Write("Persist IsDirty");
+            return 0;
+        }
+
+        public void InitNew()
+        {
+            CapeTrace.Write("Persist InitNew");
+        }
+
+        public void GetSizeMax(out ulong size)
+        {
+            size = (ulong)ParameterState().Length;
+            CapeTrace.Write("Persist GetSizeMax " + size);
+        }
+
+        public void Save(IStream stream, bool clearDirty)
+        {
+            var bytes = ParameterState();
+            CapeTrace.Write("Persist Save n=" + bytes.Length);
+            stream.Write(bytes, bytes.Length, IntPtr.Zero);
+        }
+
+        public void Load(IStream stream)
+        {
+            var lenBuf = new byte[4];
+            stream.Read(lenBuf, 4, IntPtr.Zero);
+            int len = lenBuf[0] | (lenBuf[1] << 8) | (lenBuf[2] << 16) | (lenBuf[3] << 24);
+            if (len < 0 || len > 1000000)
+            {
+                CapeTrace.Write("Persist Load bad " + len);
+                return;
+            }
+            var body = new byte[len];
+            if (len > 0)
+                stream.Read(body, len, IntPtr.Zero);
+            var json = Encoding.UTF8.GetString(body);
+            CapeTrace.Write("Persist Load n=" + len);
+            var map = _json.Deserialize<Dictionary<string, object>>(json);
+            if (map == null)
+                return;
+            foreach (var kv in map)
+            {
+                if (!_p.TryGetValue(kv.Key, out var parameter))
+                    continue;
+                if (parameter.Mode == CapeParamMode.CAPE_OUTPUT)
+                    continue;
+                parameter.value = kv.Value;
+            }
+        }
+
+        byte[] ParameterState()
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in _params.All)
+            {
+                var parameter = (CapeParameter)item;
+                if (parameter.Mode == CapeParamMode.CAPE_OUTPUT)
+                    continue;
+                map[parameter.ComponentName] = Convert.ToString(parameter.value, CultureInfo.InvariantCulture);
+            }
+            var body = Encoding.UTF8.GetBytes(_json.Serialize(map));
+            var bytes = new byte[4 + body.Length];
+            bytes[0] = (byte)body.Length;
+            bytes[1] = (byte)(body.Length >> 8);
+            bytes[2] = (byte)(body.Length >> 16);
+            bytes[3] = (byte)(body.Length >> 24);
+            Buffer.BlockCopy(body, 0, bytes, 4, body.Length);
+            return bytes;
         }
 
         public void Edit()

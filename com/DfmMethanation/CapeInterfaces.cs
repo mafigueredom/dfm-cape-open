@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 
 namespace PhD.DfmMethanation
 {
@@ -172,6 +173,37 @@ namespace PhD.DfmMethanation
         CapeValidationStatus ValStatus { get; }
         void Calculate();
         bool Validate(ref string message);
+    }
+
+    /// <summary>
+    /// OLE persistence. Aspen saves a CAPE-OPEN block through this interface.
+    /// Without it, mmg.dll writes through a null pointer and the process dies.
+    /// </summary>
+    [ComVisible(true)]
+    [Guid("00000109-0000-0000-C000-000000000046")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IPersistStream
+    {
+        void GetClassID(out Guid classId);
+        [PreserveSig]
+        int IsDirty();
+        void Load(IStream stream);
+        void Save(IStream stream, [MarshalAs(UnmanagedType.Bool)] bool clearDirty);
+        void GetSizeMax(out ulong size);
+    }
+
+    [ComVisible(true)]
+    [Guid("7FD52380-4E07-101B-AE2D-08002B2EC713")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IPersistStreamInit
+    {
+        void GetClassID(out Guid classId);
+        [PreserveSig]
+        int IsDirty();
+        void Load(IStream stream);
+        void Save(IStream stream, [MarshalAs(UnmanagedType.Bool)] bool clearDirty);
+        void GetSizeMax(out ulong size);
+        void InitNew();
     }
 
     [ComVisible(true)]
