@@ -286,10 +286,12 @@ namespace PhD.DfmMethanation
             var yObj = new Dictionary<string, object>();
             foreach (var kv in y)
                 yObj[kv.Key] = kv.Value;
+            double pressure;
+            ThermoBridge.GetTP(mo, out _, out pressure);
             return new Dictionary<string, object>
             {
-                { "F_mol_s", ThermoBridge.GetOverallScalar(mo, "totalFlow", "mole") },
-                { "P_Pa", ThermoBridge.GetOverallScalar(mo, "pressure") },
+                { "F_mol_s", ThermoBridge.GetMolarFlow(mo) },
+                { "P_Pa", pressure },
                 { "y", yObj }
             };
         }

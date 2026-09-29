@@ -51,6 +51,29 @@ namespace PhD.DfmMethanation
             return new[] { Convert.ToString(raw, CultureInfo.InvariantCulture) };
         }
 
+        public static void GetTP(object mo, out double temperature, out double pressure)
+        {
+            var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+            object composition;
+            mat.GetOverallTPFraction(out temperature, out pressure, out composition);
+            CapeTrace.Write(
+                "GetOverallTPFraction T=" + temperature.ToString(CultureInfo.InvariantCulture)
+                + " P=" + pressure.ToString(CultureInfo.InvariantCulture));
+        }
+
+        public static double GetMolarFlow(object mo)
+        {
+            var values = GetOverall(mo, "totalFlow", "mole");
+            if (values.Length == 0)
+                throw new InvalidOperationException("empty flow");
+            double sum = 0.0;
+            foreach (var v in values)
+                sum += v;
+            CapeTrace.Write(
+                "flow sum " + sum.ToString(CultureInfo.InvariantCulture) + " n=" + values.Length);
+            return sum;
+        }
+
         public static double GetOverallScalar(object mo, string property, string basis = null)
         {
             var values = GetOverall(mo, property, basis);
@@ -258,7 +281,10 @@ namespace PhD.DfmMethanation
             [MarshalAs(UnmanagedType.BStr)] string basis,
             [MarshalAs(UnmanagedType.Struct)] out object results);
 
-        void GetOverallTPFraction(string phaseLabel, out object temperature, out object pressure, out object composition);
+        void GetOverallTPFraction(
+            out double temperature,
+            out double pressure,
+            [MarshalAs(UnmanagedType.Struct)] out object composition);
         void GetPresentPhases(out object phaseLabels, out object phaseStatus);
         void GetSinglePhaseProp(string property, string phaseLabel, string basis, out object results);
         void GetTPFraction(string phaseLabel, out object temperature, out object pressure, out object composition);
