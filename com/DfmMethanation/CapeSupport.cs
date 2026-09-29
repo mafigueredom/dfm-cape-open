@@ -207,6 +207,7 @@ namespace PhD.DfmMethanation
         public CapeValidationStatus ValStatus { get; protected set; }
         public object Specification
         {
+            [return: MarshalAs(UnmanagedType.IDispatch)]
             get
             {
                 CapeTrace.Write("Specification " + ComponentName);

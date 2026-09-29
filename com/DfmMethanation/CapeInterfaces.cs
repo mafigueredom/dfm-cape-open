@@ -68,8 +68,7 @@ namespace PhD.DfmMethanation
     [InterfaceType(ComInterfaceType.InterfaceIsDual)]
     public interface ICapeParameter
     {
-        [return: MarshalAs(UnmanagedType.IDispatch)]
-        object Specification { get; }
+        object Specification { [return: MarshalAs(UnmanagedType.IDispatch)] get; }
         object value { get; set; }
         CapeValidationStatus ValStatus { get; }
         CapeParamMode Mode { get; set; }
