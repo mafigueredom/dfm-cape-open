@@ -44,7 +44,9 @@ namespace PhD.DfmMethanation
     public class CapePort : ICapeUnitPort, ICapeIdentification
     {
         static readonly Guid IidIDispatch = new Guid("00020400-0000-0000-C000-000000000046");
-        IntPtr _unknown;
+        static readonly Guid IidThermo11 = new Guid("678C0A9B-7D66-11D2-A67D-00105A42887F");
+        static readonly Guid IidThermo10 = new Guid("678C0994-7D66-11D2-A67D-00105A42887F");
+        IntPtr _material;
         string _name;
         string _description;
 
@@ -95,48 +97,77 @@ namespace PhD.DfmMethanation
             }
         }
 
-        public object connectedObject
+        public bool IsConnected => _material != IntPtr.Zero;
+
+        public object MaterialObject =>
+            _material == IntPtr.Zero ? null : Marshal.GetObjectForIUnknown(_material);
+
+        public int get_connectedObject(out IntPtr connectedObject)
         {
-            get
+            if (_material == IntPtr.Zero)
             {
-                CapeTrace.Write("connectedObject " + _name + " " + (_unknown == IntPtr.Zero ? "null" : "ptr"));
-                if (_unknown == IntPtr.Zero)
-                    return null;
-                // Hand back TEA's own IDispatch. Returning the stored RCW wraps it again and COFE crashes.
-                Guid iid = IidIDispatch;
-                IntPtr dispatch;
-                int hr = Marshal.QueryInterface(_unknown, ref iid, out dispatch);
-                if (hr < 0 || dispatch == IntPtr.Zero)
-                {
-                    CapeTrace.Write("connectedObject QI IDispatch failed 0x" + hr.ToString("X8"));
-                    return null;
-                }
-                object rcw = Marshal.GetObjectForIUnknown(dispatch);
-                Marshal.Release(dispatch);
-                return rcw;
+                connectedObject = IntPtr.Zero;
+                CapeTrace.Write("connectedObject " + _name + " null");
+                return 0;
             }
+            Marshal.AddRef(_material);
+            connectedObject = _material;
+            CapeTrace.Write("connectedObject " + _name + " return ptr");
+            return 0;
         }
 
         public void Connect(object objectToConnect)
         {
             CapeTrace.Write("Connect " + _name + " " + (objectToConnect == null ? "null" : "object"));
-            ReleaseUnknown();
-            if (objectToConnect != null)
-                _unknown = Marshal.GetIUnknownForObject(objectToConnect);
+            ReleaseMaterial();
+            if (objectToConnect == null)
+                return;
+            IntPtr unk = Marshal.GetIUnknownForObject(objectToConnect);
+            try
+            {
+                string which;
+                _material = Query(unk, IidThermo11);
+                if (_material != IntPtr.Zero)
+                    which = "thermo11";
+                else
+                {
+                    _material = Query(unk, IidThermo10);
+                    if (_material != IntPtr.Zero)
+                        which = "thermo10";
+                    else
+                    {
+                        _material = Query(unk, IidIDispatch);
+                        which = _material == IntPtr.Zero ? "none" : "dispatch";
+                    }
+                }
+                CapeTrace.Write("Connect " + _name + " stored " + which);
+            }
+            finally
+            {
+                Marshal.Release(unk);
+            }
         }
 
         public void Disconnect()
         {
             CapeTrace.Write("Disconnect " + _name);
-            ReleaseUnknown();
+            ReleaseMaterial();
         }
 
-        void ReleaseUnknown()
+        static IntPtr Query(IntPtr unk, Guid iid)
         {
-            if (_unknown == IntPtr.Zero)
+            Guid g = iid;
+            IntPtr p;
+            int hr = Marshal.QueryInterface(unk, ref g, out p);
+            return hr < 0 ? IntPtr.Zero : p;
+        }
+
+        void ReleaseMaterial()
+        {
+            if (_material == IntPtr.Zero)
                 return;
-            Marshal.Release(_unknown);
-            _unknown = IntPtr.Zero;
+            Marshal.Release(_material);
+            _material = IntPtr.Zero;
         }
     }
 

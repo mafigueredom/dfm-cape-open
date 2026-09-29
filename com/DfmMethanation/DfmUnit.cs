@@ -104,16 +104,16 @@ namespace PhD.DfmMethanation
             CapeTrace.Write(">> Validate");
             try
             {
-                if (_feedAds.connectedObject == null ||
-                    _feedPurge.connectedObject == null ||
-                    _feedRxn.connectedObject == null)
+                if (!_feedAds.IsConnected ||
+                    !_feedPurge.IsConnected ||
+                    !_feedRxn.IsConnected)
                 {
                     message = "Feed_ads, Feed_purge and Feed_rxn must be connected.";
                     _val = CapeValidationStatus.CAPE_INVALID;
                     CapeTrace.Write("<< Validate invalid feeds");
                     return false;
                 }
-                if (_product.connectedObject == null)
+                if (!_product.IsConnected)
                 {
                     message = "Product must be connected.";
                     _val = CapeValidationStatus.CAPE_INVALID;
@@ -121,7 +121,7 @@ namespace PhD.DfmMethanation
                     return false;
                 }
                 var t2 = P("t_purge2").AsDouble();
-                if (t2 > 0.0 && _feedPurge2.connectedObject == null)
+                if (t2 > 0.0 && !_feedPurge2.IsConnected)
                 {
                     message = "t_purge2 > 0 requires Feed_purge2 connected.";
                     _val = CapeValidationStatus.CAPE_INVALID;
@@ -237,7 +237,7 @@ namespace PhD.DfmMethanation
 
         Dictionary<string, object> ReadFeed(CapePort port, bool required)
         {
-            var mo = port.connectedObject;
+            var mo = port.MaterialObject;
             if (mo == null)
             {
                 if (required)
@@ -277,7 +277,7 @@ namespace PhD.DfmMethanation
 
         void ApplyProduct()
         {
-            var mo = _product.connectedObject;
+            var mo = _product.MaterialObject;
             var product = Dict(_lastResult, "product");
             var fss = Dict(product, "F_ss_mol_s");
             double total = 0.0;

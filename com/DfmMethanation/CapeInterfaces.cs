@@ -135,8 +135,10 @@ namespace PhD.DfmMethanation
     {
         CapePortType portType { get; }
         CapePortDirection direction { get; }
-        [return: MarshalAs(UnmanagedType.IDispatch)]
-        object connectedObject { get; }
+        // COFE uses this pointer as the material interface. A generic IDispatch
+        // vtable is the wrong object and COFE access-violates in its own exe.
+        [PreserveSig]
+        int get_connectedObject(out IntPtr connectedObject);
         void Connect([MarshalAs(UnmanagedType.IDispatch)] object objectToConnect);
         void Disconnect();
     }
