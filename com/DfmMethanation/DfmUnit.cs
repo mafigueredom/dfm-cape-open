@@ -310,7 +310,22 @@ namespace PhD.DfmMethanation
 
         void AddP(string name, object value, CapeParamMode mode, string desc = null)
         {
-            var p = new CapeParameter(name, value, mode, desc);
+            CapeParameter p;
+            if (value is bool b)
+                p = new CapeBooleanParameter(name, b, mode, desc);
+            else if (value is int n)
+                p = new CapeIntegerParameter(name, n, mode, desc);
+            else if (value is string s)
+                p = new CapeOptionParameter(name, s, Array.Empty<string>(), false, mode, desc);
+            else
+                p = new CapeRealParameter(name, Convert.ToDouble(value, CultureInfo.InvariantCulture), mode, desc);
+            _p[name] = p;
+            _params.Add(name, p);
+        }
+
+        void AddOption(string name, string value, string[] options, bool restricted, CapeParamMode mode, string desc = null)
+        {
+            var p = new CapeOptionParameter(name, value, options, restricted, mode, desc);
             _p[name] = p;
             _params.Add(name, p);
         }
@@ -346,15 +361,17 @@ namespace PhD.DfmMethanation
             AddP("Ea", 14560.0, CapeParamMode.CAPE_INPUT, "Ea [J/mol]");
             AddP("m1", 1.7, CapeParamMode.CAPE_INPUT);
             AddP("m2", 5.0, CapeParamMode.CAPE_INPUT);
-            AddP("n_cycles", 1, CapeParamMode.CAPE_INPUT);
+            AddP("n_cycles", 1, CapeParamMode.CAPE_INPUT, "Number of cycles");
             AddP("t_ads", 400.0, CapeParamMode.CAPE_INPUT, "Adsorption duration [s]");
             AddP("t_purge", 180.0, CapeParamMode.CAPE_INPUT);
             AddP("t_rxn", 300.0, CapeParamMode.CAPE_INPUT);
             AddP("t_purge2", 0.0, CapeParamMode.CAPE_INPUT);
-            AddP("C_t_export", "both", CapeParamMode.CAPE_INPUT);
+            AddOption("C_t_export", "both", new[] { "raw", "sopdt", "both" }, true, CapeParamMode.CAPE_INPUT,
+                "Report series: raw, sopdt, or both");
             AddP("balance_tol", 0.001, CapeParamMode.CAPE_INPUT);
             AddP("fail_if_unbalanced", false, CapeParamMode.CAPE_INPUT);
-            AddP("docker_image", "dfm-methanation-cape:v1", CapeParamMode.CAPE_INPUT);
+            AddOption("docker_image", "dfm-methanation-cape:v1", Array.Empty<string>(), false,
+                CapeParamMode.CAPE_INPUT, "Docker engine image");
             AddP("t_end_override", 0.0, CapeParamMode.CAPE_INPUT, "0 = full horizon; >0 passed as --t-end");
             AddP("R_C_rel", 0.0, CapeParamMode.CAPE_OUTPUT);
             AddP("R_H_rel", 0.0, CapeParamMode.CAPE_OUTPUT);

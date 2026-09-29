@@ -24,6 +24,15 @@ namespace PhD.DfmMethanation
         CAPE_INPUT_OUTPUT = 2
     }
 
+    public enum CapeParamType
+    {
+        CAPE_REAL = 0,
+        CAPE_INT = 1,
+        CAPE_OPTION = 2,
+        CAPE_BOOLEAN = 3,
+        CAPE_ARRAY = 4
+    }
+
     public enum CapeValidationStatus
     {
         CAPE_VALID = 0,
@@ -49,15 +58,72 @@ namespace PhD.DfmMethanation
         int Count { get; }
     }
 
+    /// <summary>
+    /// Vtable order matches the CAPE-OPEN 1.1 type library COFE early-binds.
+    /// Specification is first: COFE calls it as soon as the block is dropped.
+    /// </summary>
     [ComVisible(true)]
     [Guid(Guids.ICapeParameter)]
     [InterfaceType(ComInterfaceType.InterfaceIsDual)]
     public interface ICapeParameter
     {
+        object Specification { get; }
         object value { get; set; }
-        CapeParamMode Mode { get; }
-        string ComponentName { get; set; }
-        string ComponentDescription { get; set; }
+        CapeValidationStatus ValStatus { get; }
+        CapeParamMode Mode { get; set; }
+        bool Validate(ref string message);
+        void Reset();
+    }
+
+    [ComVisible(true)]
+    [Guid(Guids.ICapeParameterSpec)]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    public interface ICapeParameterSpec
+    {
+        CapeParamType Type { get; }
+        object Dimensionality { get; }
+    }
+
+    [ComVisible(true)]
+    [Guid(Guids.ICapeRealParameterSpec)]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    public interface ICapeRealParameterSpec
+    {
+        double DefaultValue { get; }
+        double LowerBound { get; }
+        double UpperBound { get; }
+        bool Validate(double value, ref string message);
+    }
+
+    [ComVisible(true)]
+    [Guid(Guids.ICapeIntegerParameterSpec)]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    public interface ICapeIntegerParameterSpec
+    {
+        int DefaultValue { get; }
+        int LowerBound { get; }
+        int UpperBound { get; }
+        bool Validate(int value, ref string message);
+    }
+
+    [ComVisible(true)]
+    [Guid(Guids.ICapeBooleanParameterSpec)]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    public interface ICapeBooleanParameterSpec
+    {
+        bool DefaultValue { get; }
+        bool Validate(bool value, ref string message);
+    }
+
+    [ComVisible(true)]
+    [Guid(Guids.ICapeOptionParameterSpec)]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    public interface ICapeOptionParameterSpec
+    {
+        string DefaultValue { get; }
+        object OptionList { get; }
+        bool RestrictedToList { get; }
+        bool Validate(string value, ref string message);
     }
 
     [ComVisible(true)]
@@ -70,8 +136,6 @@ namespace PhD.DfmMethanation
         object connectedObject { get; }
         void Connect(object objectToConnect);
         void Disconnect();
-        string ComponentName { get; set; }
-        string ComponentDescription { get; set; }
     }
 
     [ComVisible(true)]

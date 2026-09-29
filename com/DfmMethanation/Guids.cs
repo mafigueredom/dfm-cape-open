@@ -22,6 +22,11 @@ namespace PhD.DfmMethanation
         public const string ICapeCollection = "678C099A-0093-11D2-A67D-00105A42887F";
         public const string ICapeUtilities = "678C0A9B-0100-11D2-A67D-00105A42887F";
         public const string ICapeParameter = "678C09A0-0093-11D2-A67D-00105A42887F";
+        public const string ICapeParameterSpec = "678C099C-0093-11D2-A67D-00105A42887F";
+        public const string ICapeRealParameterSpec = "678C099D-0093-11D2-A67D-00105A42887F";
+        public const string ICapeIntegerParameterSpec = "678C099E-0093-11D2-A67D-00105A42887F";
+        public const string ICapeOptionParameterSpec = "678C099F-0093-11D2-A67D-00105A42887F";
+        public const string ICapeBooleanParameterSpec = "678C09A8-0093-11D2-A67D-00105A42887F";
         public const string ICapeUnit = "678C0998-0100-11D2-A67D-00105A42887F";
         public const string ICapeUnitPort = "678C0999-0093-11D2-A67D-00105A42887F";
         public const string ICapeUnitReport = "678C099B-0093-11D2-A67D-00105A42887F";

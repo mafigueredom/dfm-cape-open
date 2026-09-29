@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 
 namespace PhD.DfmMethanation
@@ -58,40 +59,195 @@ namespace PhD.DfmMethanation
         public void Disconnect() => _connected = null;
     }
 
-    [ComVisible(true)]
-    [ClassInterface(ClassInterfaceType.None)]
-        [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A003")]
-    public class CapeParameter : ICapeParameter, ICapeIdentification
+    /// <summary>
+    /// Shared parameter state. Not a COM class; the typed subclasses are.
+    /// </summary>
+    [ComVisible(false)]
+    public abstract class CapeParameter : ICapeIdentification
     {
         object _value;
+        readonly object _default;
 
-        public CapeParameter(string name, object value, CapeParamMode mode, string desc = null)
+        protected CapeParameter(string name, object value, CapeParamMode mode, string desc)
         {
             ComponentName = name;
-            ComponentDescription = desc ?? name;
+            ComponentDescription = string.IsNullOrEmpty(desc) ? name : desc;
+            _default = value;
             _value = value;
             Mode = mode;
+            ValStatus = CapeValidationStatus.CAPE_VALID;
         }
 
         public string ComponentName { get; set; }
         public string ComponentDescription { get; set; }
-        public CapeParamMode Mode { get; }
+        public CapeParamMode Mode { get; set; }
+        public CapeValidationStatus ValStatus { get; protected set; }
+        public object Specification => this;
+        public object Dimensionality => Array.Empty<double>();
 
         public object value
         {
             get => _value;
             set
             {
-                if (Mode == CapeParamMode.CAPE_OUTPUT)
-                    _value = value;
-                else
-                    _value = value;
+                if (value == null)
+                    return;
+                _value = Coerce(value);
+                ValStatus = CapeValidationStatus.CAPE_NOT_VALIDATED;
             }
         }
 
-        public double AsDouble() => Convert.ToDouble(_value);
-        public int AsInt() => Convert.ToInt32(_value);
-        public bool AsBool() => Convert.ToBoolean(_value);
-        public string AsString() => Convert.ToString(_value);
+        public bool Validate(ref string message)
+        {
+            message = "ok";
+            ValStatus = CapeValidationStatus.CAPE_VALID;
+            return true;
+        }
+
+        public void Reset()
+        {
+            _value = _default;
+            ValStatus = CapeValidationStatus.CAPE_NOT_VALIDATED;
+        }
+
+        protected object DefaultObject => _default;
+        protected abstract object Coerce(object incoming);
+
+        public double AsDouble() => Convert.ToDouble(_value, CultureInfo.InvariantCulture);
+        public int AsInt() => Convert.ToInt32(_value, CultureInfo.InvariantCulture);
+        public bool AsBool() => Convert.ToBoolean(_value, CultureInfo.InvariantCulture);
+        public string AsString() => Convert.ToString(_value, CultureInfo.InvariantCulture);
+    }
+
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A003")]
+    public class CapeRealParameter : CapeParameter, ICapeParameter, ICapeParameterSpec, ICapeRealParameterSpec
+    {
+        public CapeRealParameter(string name, double value, CapeParamMode mode, string desc = null)
+            : base(name, value, mode, desc)
+        {
+        }
+
+        public CapeParamType Type => CapeParamType.CAPE_REAL;
+        public double DefaultValue => Convert.ToDouble(DefaultObject, CultureInfo.InvariantCulture);
+        public double LowerBound => double.NaN;
+        public double UpperBound => double.NaN;
+
+        public bool Validate(double value, ref string message)
+        {
+            message = "ok";
+            return true;
+        }
+
+        protected override object Coerce(object incoming) =>
+            Convert.ToDouble(incoming, CultureInfo.InvariantCulture);
+    }
+
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A004")]
+    public class CapeIntegerParameter : CapeParameter, ICapeParameter, ICapeParameterSpec, ICapeIntegerParameterSpec
+    {
+        public CapeIntegerParameter(string name, int value, CapeParamMode mode, string desc = null,
+            int lower = int.MinValue, int upper = int.MaxValue)
+            : base(name, value, mode, desc)
+        {
+            LowerBound = lower;
+            UpperBound = upper;
+        }
+
+        public CapeParamType Type => CapeParamType.CAPE_INT;
+        public int DefaultValue => Convert.ToInt32(DefaultObject, CultureInfo.InvariantCulture);
+        public int LowerBound { get; }
+        public int UpperBound { get; }
+
+        public bool Validate(int value, ref string message)
+        {
+            if (value < LowerBound || value > UpperBound)
+            {
+                message = ComponentName + " is outside [" + LowerBound + ", " + UpperBound + "].";
+                return false;
+            }
+            message = "ok";
+            return true;
+        }
+
+        protected override object Coerce(object incoming) =>
+            Convert.ToInt32(incoming, CultureInfo.InvariantCulture);
+    }
+
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A005")]
+    public class CapeBooleanParameter : CapeParameter, ICapeParameter, ICapeParameterSpec, ICapeBooleanParameterSpec
+    {
+        public CapeBooleanParameter(string name, bool value, CapeParamMode mode, string desc = null)
+            : base(name, value, mode, desc)
+        {
+        }
+
+        public CapeParamType Type => CapeParamType.CAPE_BOOLEAN;
+        public bool DefaultValue => Convert.ToBoolean(DefaultObject, CultureInfo.InvariantCulture);
+
+        public bool Validate(bool value, ref string message)
+        {
+            message = "ok";
+            return true;
+        }
+
+        protected override object Coerce(object incoming)
+        {
+            if (incoming is bool b)
+                return b;
+            if (incoming is short s)
+                return s != 0;
+            if (incoming is int i)
+                return i != 0;
+            return Convert.ToBoolean(incoming, CultureInfo.InvariantCulture);
+        }
+    }
+
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A006")]
+    public class CapeOptionParameter : CapeParameter, ICapeParameter, ICapeParameterSpec, ICapeOptionParameterSpec
+    {
+        readonly string[] _options;
+
+        public CapeOptionParameter(string name, string value, string[] options, bool restricted,
+            CapeParamMode mode, string desc = null)
+            : base(name, value ?? "", mode, desc)
+        {
+            _options = options ?? Array.Empty<string>();
+            RestrictedToList = restricted;
+        }
+
+        public CapeParamType Type => CapeParamType.CAPE_OPTION;
+        public string DefaultValue => Convert.ToString(DefaultObject, CultureInfo.InvariantCulture);
+        public object OptionList => _options;
+        public bool RestrictedToList { get; }
+
+        public bool Validate(string value, ref string message)
+        {
+            if (!RestrictedToList)
+            {
+                message = "ok";
+                return true;
+            }
+            foreach (var opt in _options)
+            {
+                if (string.Equals(opt, value, StringComparison.OrdinalIgnoreCase))
+                {
+                    message = "ok";
+                    return true;
+                }
+            }
+            message = ComponentName + " must be one of: " + string.Join(", ", _options);
+            return false;
+        }
+
+        protected override object Coerce(object incoming) =>
+            Convert.ToString(incoming, CultureInfo.InvariantCulture) ?? "";
     }
 }
