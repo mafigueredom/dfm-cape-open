@@ -39,6 +39,8 @@ def reactor_state_to_dict(
         out["F_out_mol"] = {sp: float(state.F_out_mol.get(sp, 0.0)) for sp in species}
     if state.balance_summary is not None:
         out["balance_summary"] = state.balance_summary
+    if state.axial_profiles:
+        out["axial_profiles"] = state.axial_profiles
     if config_path is not None:
         out["config"] = str(config_path)
     if meta:

@@ -435,6 +435,9 @@ def build_cape_result(
             "SOPDT C(t) is a report series; filled in step 2 from outlet_sopdt_filter. "
             "Not used for product F_ss."
         )
+    profiles = run.get("axial_profiles")
+    if profiles:
+        result["axial_profiles"] = profiles
     from adr.cape.reports import attach_reports
 
     attach_reports(result)

@@ -264,6 +264,27 @@ class DfmFenicsRuntime:
             return float(np.mean(C.x.array))
         return float(C.x.array[self._outlet_mask] @ self._outlet_w)
 
+    def axial_profile(self) -> dict:
+        """Radial-mean C_i(z) and q(z). q is solid CO2 loading [mol/kg]."""
+        n_local = int(self.V.dofmap.index_map.size_local)
+        coords = np.asarray(self.V.tabulate_dof_coordinates()[:n_local], dtype=float)
+        r = coords[:, 0]
+        z = coords[:, 1]
+        q = np.asarray(self.q_n.x.array[:n_local], dtype=float)
+        conc = {
+            sp: np.asarray(self.C_n[sp].x.array[:n_local], dtype=float)
+            for sp in self.species
+        }
+        if self.comm.size > 1:
+            parts = self.comm.allgather((r, z, q, conc))
+            r = np.concatenate([p[0] for p in parts])
+            z = np.concatenate([p[1] for p in parts])
+            q = np.concatenate([p[2] for p in parts])
+            conc = {
+                sp: np.concatenate([p[3][sp] for p in parts]) for sp in self.species
+            }
+        return _radial_mean_along_z(r, z, q, conc, self.species)
+
     def update_D_z_fields(self, *, force: bool = False) -> bool:
         vel_d = max(float(getattr(self, "_vel_d", self.v_z * self._epsilon)), 0.0)
         if self._wilke_eval is not None and not force:
@@ -328,3 +349,34 @@ class DfmFenicsRuntime:
 
     def update_density(self) -> None:
         update_fluid_density(self.rho_f_n, self.C_n, self.cfg)
+
+
+def _radial_mean_along_z(r, z, q, conc, species) -> dict:
+    """Collapse dofs that share z into one radial mean. Weight r (axisymmetric)."""
+    if len(z) == 0:
+        return {
+            "z_m": [],
+            "C_mol_m3": {sp: [] for sp in species},
+            "q_mol_kg": [],
+        }
+    z_sorted = np.asarray(z, dtype=float)
+    z_key = np.round(z_sorted, decimals=12)
+    order = np.argsort(z_key, kind="mergesort")
+    z_key = z_key[order]
+    z_sorted = z_sorted[order]
+    r = np.asarray(r, dtype=float)[order]
+    q = np.asarray(q, dtype=float)[order]
+    conc = {sp: np.asarray(conc[sp], dtype=float)[order] for sp in species}
+    cuts = np.flatnonzero(np.diff(z_key)) + 1
+    spans = np.split(np.arange(len(z_key)), cuts)
+    z_out: list[float] = []
+    q_out: list[float] = []
+    c_out = {sp: [] for sp in species}
+    for idx in spans:
+        w = np.maximum(r[idx], 1e-12)
+        w = w / np.sum(w)
+        z_out.append(float(np.dot(z_sorted[idx], w)))
+        q_out.append(float(np.dot(q[idx], w)))
+        for sp in species:
+            c_out[sp].append(float(np.dot(conc[sp][idx], w)))
+    return {"z_m": z_out, "C_mol_m3": c_out, "q_mol_kg": q_out}

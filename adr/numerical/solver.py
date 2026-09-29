@@ -25,6 +25,25 @@ from fenicsx.balance_diagnostics import (
 SampleCallback = Callable[[float, Any, FieldStateHistory], None]
 
 
+def _capture_axial(state: FieldStateHistory, runtime: Any, t: float) -> None:
+    """Store a radial-mean C(z), q(z) snapshot when the runtime has a mesh."""
+    fn = getattr(runtime, "axial_profile", None)
+    if fn is None:
+        return
+    snap = fn()
+    if not snap.get("z_m"):
+        return
+    state.axial_profiles.append(
+        {
+            "t_s": float(t),
+            "phase": str(getattr(runtime, "_current_phase_id", "")),
+            "z_m": snap["z_m"],
+            "C_mol_m3": snap["C_mol_m3"],
+            "q_mol_kg": snap["q_mol_kg"],
+        }
+    )
+
+
 class TimeIntegrator:
     """One physical time step: BC → ADR → reaction (per split policy) → aux."""
 
@@ -336,6 +355,7 @@ class AdrSolver:
             for k in holdup_keys:
                 state.holdup_mol[k].append(float(h0[k]))
 
+        _capture_axial(state, runtime, t)
         if on_sample is not None:
             on_sample(t, runtime, state)
 
@@ -400,6 +420,8 @@ class AdrSolver:
                 state.outlet_means[sp].append(Cout_now[sp])
                 state.inlet_effective[sp].append(Cin_now[sp])
 
+            if any(abs(t - b) <= 1e-6 for b in boundaries):
+                _capture_axial(state, runtime, t)
             if on_sample is not None:
                 on_sample(t, runtime, state)
 

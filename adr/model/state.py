@@ -24,6 +24,8 @@ class FieldStateHistory:
     balance_summary: dict | None = None
     species: list[str] = field(default_factory=list)
     factory_id: str = ""
+    # Radial-mean C(z), q(z) at phase boundaries. Empty for runtimes without a mesh.
+    axial_profiles: list = field(default_factory=list)
 
 
 # Backward-compatible alias used across fenicsx export / plots

@@ -70,7 +70,10 @@ namespace PhD.DfmMethanation
                 _simulationContext = value;
             }
         }
-        public object reports => new[] { "atom_balance", "outlet_C_raw", "outlet_C_sopdt" };
+        public object reports => new[]
+        {
+            "atom_balance", "outlet_C_raw", "outlet_C_sopdt", "profiles_C_z"
+        };
         public string selectedReport
         {
             get => _selectedReport;
@@ -186,14 +189,21 @@ namespace PhD.DfmMethanation
         {
             if (_lastResult == null)
                 return "No Calculate() result yet.\n";
-            if (string.Equals(_selectedReport, "atom_balance", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_lastResult.TryGetValue("report_text", out var t) && t != null)
-                    return Convert.ToString(t, CultureInfo.InvariantCulture);
-                return "atom_balance report not on cape_result.\n";
-            }
-            return "Report '" + _selectedReport +
-                   "' is ICapeUnitReport-only (not the Product stream). SOPDT is never applied to F_ss.\n";
+            var fromCatalog = CatalogText(_selectedReport);
+            if (!string.IsNullOrEmpty(fromCatalog))
+                return fromCatalog;
+            if (string.Equals(_selectedReport, "atom_balance", StringComparison.OrdinalIgnoreCase)
+                && _lastResult.TryGetValue("report_text", out var t) && t != null)
+                return Convert.ToString(t, CultureInfo.InvariantCulture);
+            return "Report '" + _selectedReport + "' has no text on this run.\n";
+        }
+
+        string CatalogText(string name)
+        {
+            var entry = Dict(Dict(Dict(_lastResult, "reports"), "catalog"), name);
+            if (!entry.TryGetValue("text", out var text) || text == null)
+                return null;
+            return Convert.ToString(text, CultureInfo.InvariantCulture);
         }
 
         Dictionary<string, object> BuildRequest()
