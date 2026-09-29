@@ -67,23 +67,27 @@ namespace PhD.DfmMethanation
         static double[] GetOverall(object mo, string property, string basis)
         {
             var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
-            var b = string.IsNullOrEmpty(basis) ? "undefined" : basis;
             var names = property == "totalFlow"
                 ? new[] { "flow", "totalFlow" }
                 : new[] { property };
             Exception last = null;
             foreach (var name in names)
             {
-                try
+                foreach (var b in BasisForms(basis))
                 {
-                    var values = ToDoubles(mat.GetOverallProp(name, b));
-                    CapeTrace.Write("GetOverallProp " + name + " " + b + " n=" + values.Length);
-                    return values;
-                }
-                catch (Exception ex)
-                {
-                    last = ex;
-                    CapeTrace.Write("GetOverallProp " + name + " " + b + " " + ex.Message);
+                    try
+                    {
+                        object results;
+                        mat.GetOverallProp(name, b, out results);
+                        var values = ToDoubles(results);
+                        CapeTrace.Write("GetOverallProp " + name + " " + b + " n=" + values.Length);
+                        return values;
+                    }
+                    catch (Exception ex)
+                    {
+                        last = ex;
+                        CapeTrace.Write("GetOverallProp " + name + " " + b + " " + ex.Message);
+                    }
                 }
             }
             throw new InvalidOperationException(
@@ -96,8 +100,17 @@ namespace PhD.DfmMethanation
             var compounds = (ICapeThermoCompounds)AsInterface(
                 mo, IidCompounds, typeof(ICapeThermoCompounds));
             object compIds, formulae, names, boilTemps, molwts, casnos;
-            compounds.GetCompoundList(
-                out compIds, out formulae, out names, out boilTemps, out molwts, out casnos);
+            CapeTrace.Write("GetCompoundList call");
+            try
+            {
+                compounds.GetCompoundList(
+                    out compIds, out formulae, out names, out boilTemps, out molwts, out casnos);
+            }
+            catch (COMException ex)
+            {
+                throw new InvalidOperationException(
+                    "GetCompoundList 0x" + ex.ErrorCode.ToString("X8") + " " + ex.Message, ex);
+            }
             var cas = ToStrings(casnos);
             var ids = ToStrings(compIds);
             CapeTrace.Write(
@@ -117,28 +130,43 @@ namespace PhD.DfmMethanation
         public static void SetOverall(object mo, string property, object value, string basis = null)
         {
             var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
-            var b = string.IsNullOrEmpty(basis) ? "undefined" : basis;
             var names = property == "totalFlow"
                 ? new[] { "flow", "totalFlow" }
                 : new[] { property };
+            var payload = value is Array ? value : new[] { Convert.ToDouble(value, CultureInfo.InvariantCulture) };
             Exception last = null;
             foreach (var name in names)
             {
-                try
+                foreach (var b in BasisForms(basis))
                 {
-                    mat.SetOverallProp(name, b, value);
-                    CapeTrace.Write("SetOverallProp " + name + " " + b + " ok");
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    last = ex;
-                    CapeTrace.Write("SetOverallProp " + name + " " + b + " " + ex.Message);
+                    try
+                    {
+                        mat.SetOverallProp(name, b, payload);
+                        CapeTrace.Write("SetOverallProp " + name + " " + b + " ok");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        last = ex;
+                        CapeTrace.Write("SetOverallProp " + name + " " + b + " " + ex.Message);
+                    }
                 }
             }
             throw new InvalidOperationException(
                 "SetOverallProp " + property + ": " + (last == null ? "failed" : last.Message),
                 last);
+        }
+
+        static string[] BasisForms(string basis)
+        {
+            if (string.IsNullOrEmpty(basis) ||
+                basis.Equals("undefined", StringComparison.OrdinalIgnoreCase))
+                return new[] { "UNDEFINED" };
+            if (basis.Equals("mole", StringComparison.OrdinalIgnoreCase))
+                return new[] { "Mole", "mole" };
+            if (basis.Equals("mass", StringComparison.OrdinalIgnoreCase))
+                return new[] { "Mass", "mass" };
+            return new[] { basis };
         }
 
         public static void FlashTP(object mo)
@@ -201,6 +229,7 @@ namespace PhD.DfmMethanation
     [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
     internal interface ICapeThermoCompounds
     {
+        [DispId(2)]
         void GetCompoundList(
             [MarshalAs(UnmanagedType.Struct)] out object compIds,
             [MarshalAs(UnmanagedType.Struct)] out object formulae,
@@ -215,11 +244,13 @@ namespace PhD.DfmMethanation
     [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
     internal interface ICapeThermoMaterial11
     {
-        [return: MarshalAs(UnmanagedType.Struct)]
-        object GetOverallProp(
+        [DispId(4)]
+        void GetOverallProp(
             [MarshalAs(UnmanagedType.BStr)] string property,
-            [MarshalAs(UnmanagedType.BStr)] string basis);
+            [MarshalAs(UnmanagedType.BStr)] string basis,
+            [MarshalAs(UnmanagedType.Struct)] out object results);
 
+        [DispId(10)]
         void SetOverallProp(
             [MarshalAs(UnmanagedType.BStr)] string property,
             [MarshalAs(UnmanagedType.BStr)] string basis,
