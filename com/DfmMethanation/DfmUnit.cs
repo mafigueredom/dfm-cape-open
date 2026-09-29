@@ -177,6 +177,7 @@ namespace PhD.DfmMethanation
                         extra.Append(" --t-end ").Append(tEnd.ToString(CultureInfo.InvariantCulture));
                     var raw = EngineClient.Run(work, P("docker_image").AsString(), extra.ToString());
                     _lastResult = _json.Deserialize<Dictionary<string, object>>(raw);
+                    WriteResultFile();
                     ApplyProduct();
                     ApplyOutputs();
                     _val = CapeValidationStatus.CAPE_VALID;
@@ -273,6 +274,18 @@ namespace PhD.DfmMethanation
                     throw new InvalidOperationException(port.ComponentName + " is not connected");
                 return null;
             }
+            try
+            {
+                return ReadFeed(mo, port.ComponentName);
+            }
+            finally
+            {
+                ThermoBridge.ReleaseRcw(mo);
+            }
+        }
+
+        Dictionary<string, object> ReadFeed(object mo, string portName)
+        {
             var cas = ThermoBridge.GetCasNumbers(mo);
             var yvec = ThermoBridge.GetOverallVector(mo, "fraction", "mole");
             var y = new Dictionary<string, double>();
@@ -286,7 +299,7 @@ namespace PhD.DfmMethanation
             foreach (var kv in y)
                 sum += kv.Value;
             if (sum <= 0.0)
-                throw new InvalidOperationException(port.ComponentName + ": no mapped CAS compounds");
+                throw new InvalidOperationException(portName + ": no mapped CAS compounds");
             if (Math.Abs(sum - 1.0) > 1e-6)
             {
                 var keys = new List<string>(y.Keys);
@@ -309,6 +322,18 @@ namespace PhD.DfmMethanation
         void ApplyProduct()
         {
             var mo = _product.MaterialObject;
+            try
+            {
+                ApplyProduct(mo);
+            }
+            finally
+            {
+                ThermoBridge.ReleaseRcw(mo);
+            }
+        }
+
+        void ApplyProduct(object mo)
+        {
             var product = Dict(_lastResult, "product");
             var fss = Dict(product, "F_ss_mol_s");
             double total = 0.0;
@@ -339,10 +364,10 @@ namespace PhD.DfmMethanation
                     flows[i] = ToD(fss, sp);
             }
             // TEA rejects SetOverallProp for temperature and pressure (0x80040501).
-            // The product stream already carries the isothermal T and P.
-            bool flowOk = ThermoBridge.TrySetOverall(mo, "totalFlow", flows, "mole");
+            // COFE reads SAFEARRAYs as 1-based; a 0-based array is released as a crash.
+            bool flowOk = ThermoBridge.TrySetOverall(mo, "flow", flows, "mole");
             bool fracOk = ThermoBridge.TrySetOverall(mo, "fraction", y, "mole");
-            ThermoBridge.FlashTP(mo);
+            ThermoBridge.TrySetOverall(mo, "totalFlow", new[] { total }, "mole");
             ThermoBridge.ClearError();
             if (!flowOk || !fracOk)
                 throw new InvalidOperationException("Could not write product flow or composition.");
@@ -355,10 +380,39 @@ namespace PhD.DfmMethanation
                      { "R_C_rel", "R_H_rel", "R_O_rel", "Y_CH4", "n_CH4", "N_CO2_ads" })
             {
                 if (outputs.ContainsKey(name) && outputs[name] != null)
-                    P(name).value = ToD(outputs, name);
+                {
+                    var number = ToD(outputs, name);
+                    SolvedOutputs.Values[name] = number;
+                    P(name).value = number;
+                }
             }
             if (outputs.ContainsKey("balance_ok"))
-                P("balance_ok").value = Convert.ToBoolean(outputs["balance_ok"], CultureInfo.InvariantCulture);
+            {
+                var ok = Convert.ToBoolean(outputs["balance_ok"], CultureInfo.InvariantCulture);
+                SolvedOutputs.Values["balance_ok"] = ok;
+                P("balance_ok").value = ok;
+            }
+        }
+
+        void WriteResultFile()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "dfm-cape-open-last.txt");
+            var product = Dict(_lastResult, "product");
+            var fss = Dict(product, "F_ss_mol_s");
+            var outputs = Dict(_lastResult, "outputs");
+            var text = new StringBuilder();
+            text.AppendLine("DFM methanation solve finished");
+            text.AppendLine("T_K=" + ToD(product, "T_K").ToString(CultureInfo.InvariantCulture));
+            text.AppendLine("P_Pa=" + ToD(product, "P_Pa").ToString(CultureInfo.InvariantCulture));
+            foreach (var sp in Species)
+                text.AppendLine(sp + "_mol_s=" + ToD(fss, sp).ToString("G6", CultureInfo.InvariantCulture));
+            foreach (var name in new[] { "R_C_rel", "R_H_rel", "R_O_rel", "Y_CH4", "n_CH4", "N_CO2_ads", "balance_ok" })
+            {
+                if (outputs.ContainsKey(name) && outputs[name] != null)
+                    text.AppendLine(name + "=" + Convert.ToString(outputs[name], CultureInfo.InvariantCulture));
+            }
+            File.WriteAllText(path, text.ToString());
+            CapeTrace.Write("result file " + path);
         }
 
         static Dictionary<string, object> Dict(Dictionary<string, object> parent, string key)

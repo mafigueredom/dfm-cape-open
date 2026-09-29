@@ -152,6 +152,7 @@ namespace PhD.DfmMethanation
         {
             CapeTrace.Write("Disconnect " + _name);
             ReleaseMaterial();
+            CapeTrace.Write("Disconnect " + _name + " released");
         }
 
         static IntPtr Query(IntPtr unk, Guid iid)
@@ -169,6 +170,16 @@ namespace PhD.DfmMethanation
             Marshal.Release(_material);
             _material = IntPtr.Zero;
         }
+    }
+
+    /// <summary>
+    /// COFE calculates on a temporary unit and then destroys it. Output values
+    /// are kept here so the flowsheet unit still shows the last solve.
+    /// </summary>
+    internal static class SolvedOutputs
+    {
+        public static readonly Dictionary<string, object> Values =
+            new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -215,7 +226,13 @@ namespace PhD.DfmMethanation
 
         public object value
         {
-            get => _value;
+            get
+            {
+                if (Mode == CapeParamMode.CAPE_OUTPUT
+                    && SolvedOutputs.Values.TryGetValue(ComponentName, out var solved))
+                    return solved;
+                return _value;
+            }
             set
             {
                 CapeTrace.Guard("value " + ComponentName, () =>

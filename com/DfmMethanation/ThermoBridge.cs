@@ -53,12 +53,20 @@ namespace PhD.DfmMethanation
 
         public static void GetTP(object mo, out double temperature, out double pressure)
         {
-            var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
-            object composition;
-            mat.GetOverallTPFraction(out temperature, out pressure, out composition);
-            CapeTrace.Write(
-                "GetOverallTPFraction T=" + temperature.ToString(CultureInfo.InvariantCulture)
-                + " P=" + pressure.ToString(CultureInfo.InvariantCulture));
+            object raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+            try
+            {
+                var mat = (ICapeThermoMaterial11)raw;
+                object composition;
+                mat.GetOverallTPFraction(out temperature, out pressure, out composition);
+                CapeTrace.Write(
+                    "GetOverallTPFraction T=" + temperature.ToString(CultureInfo.InvariantCulture)
+                    + " P=" + pressure.ToString(CultureInfo.InvariantCulture));
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
         }
 
         public static double GetMolarFlow(object mo)
@@ -89,39 +97,48 @@ namespace PhD.DfmMethanation
 
         static double[] GetOverall(object mo, string property, string basis)
         {
-            var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
-            var names = property == "totalFlow"
-                ? new[] { "flow", "totalFlow" }
-                : new[] { property };
-            Exception last = null;
-            foreach (var name in names)
+            object raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+            try
             {
-                foreach (var b in BasisForms(basis))
+                var mat = (ICapeThermoMaterial11)raw;
+                var names = property == "totalFlow"
+                    ? new[] { "flow", "totalFlow" }
+                    : new[] { property };
+                Exception last = null;
+                foreach (var name in names)
                 {
-                    try
+                    foreach (var b in BasisForms(basis))
                     {
-                        object results;
-                        mat.GetOverallProp(name, b, out results);
-                        var values = ToDoubles(results);
-                        CapeTrace.Write("GetOverallProp " + name + " " + b + " n=" + values.Length);
-                        return values;
-                    }
-                    catch (Exception ex)
-                    {
-                        last = ex;
-                        CapeTrace.Write("GetOverallProp " + name + " " + b + " " + ex.Message);
+                        try
+                        {
+                            object results;
+                            mat.GetOverallProp(name, b, out results);
+                            var values = ToDoubles(results);
+                            CapeTrace.Write("GetOverallProp " + name + " " + b + " n=" + values.Length);
+                            return values;
+                        }
+                        catch (Exception ex)
+                        {
+                            last = ex;
+                            ClearError();
+                            CapeTrace.Write("GetOverallProp " + name + " " + b + " " + ex.Message);
+                        }
                     }
                 }
+                throw new InvalidOperationException(
+                    "GetOverallProp " + property + ": " + (last == null ? "failed" : last.Message),
+                    last);
             }
-            throw new InvalidOperationException(
-                "GetOverallProp " + property + ": " + (last == null ? "failed" : last.Message),
-                last);
+            finally
+            {
+                ReleaseRcw(raw);
+            }
         }
 
         public static string[] GetCasNumbers(object mo)
         {
-            var compounds = (ICapeThermoCompounds)AsInterface(
-                mo, IidCompounds, typeof(ICapeThermoCompounds));
+            object raw = AsInterface(mo, IidCompounds, typeof(ICapeThermoCompounds));
+            var compounds = (ICapeThermoCompounds)raw;
             object compIds, formulae, names, boilTemps, molwts, casnos;
             CapeTrace.Write("GetCompoundList call");
             try
@@ -133,6 +150,10 @@ namespace PhD.DfmMethanation
             {
                 throw new InvalidOperationException(
                     "GetCompoundList 0x" + ex.ErrorCode.ToString("X8") + " " + ex.Message, ex);
+            }
+            finally
+            {
+                ReleaseRcw(raw);
             }
             var cas = ToStrings(casnos);
             var ids = ToStrings(compIds);
@@ -159,6 +180,24 @@ namespace PhD.DfmMethanation
             catch { }
         }
 
+        public static void ReleaseRcw(object comObject)
+        {
+            try
+            {
+                if (comObject != null && Marshal.IsComObject(comObject))
+                    Marshal.ReleaseComObject(comObject);
+            }
+            catch { }
+        }
+
+        static Array OneBased(double[] values)
+        {
+            var arr = Array.CreateInstance(typeof(double), new[] { values.Length }, new[] { 1 });
+            for (int i = 0; i < values.Length; i++)
+                arr.SetValue(values[i], i + 1);
+            return arr;
+        }
+
         public static bool TrySetOverall(object mo, string property, object value, string basis = null)
         {
             try
@@ -176,32 +215,45 @@ namespace PhD.DfmMethanation
 
         public static void SetOverall(object mo, string property, object value, string basis = null)
         {
-            var mat = (ICapeThermoMaterial11)AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
-            var names = property == "totalFlow"
-                ? new[] { "flow", "totalFlow" }
-                : new[] { property };
-            var payload = value is Array ? value : new[] { Convert.ToDouble(value, CultureInfo.InvariantCulture) };
-            Exception last = null;
-            foreach (var name in names)
+            object raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+            try
             {
-                foreach (var b in BasisForms(basis))
+                var mat = (ICapeThermoMaterial11)raw;
+                var names = property == "totalFlow"
+                    ? new[] { "totalFlow" }
+                    : new[] { property };
+                double[] numbers = value is double[] direct
+                    ? direct
+                    : new[] { Convert.ToDouble(value, CultureInfo.InvariantCulture) };
+                var payload = OneBased(numbers);
+                Exception last = null;
+                foreach (var name in names)
                 {
-                    try
+                    foreach (var b in BasisForms(basis))
                     {
-                        mat.SetOverallProp(name, b, payload);
-                        CapeTrace.Write("SetOverallProp " + name + " " + b + " ok");
-                        return;
-                    }
-                    catch (Exception ex)
-                    {
-                        last = ex;
-                        CapeTrace.Write("SetOverallProp " + name + " " + b + " " + ex.Message);
+                        try
+                        {
+                            mat.SetOverallProp(name, b, payload);
+                            CapeTrace.Write(
+                                "SetOverallProp " + name + " " + b + " ok n=" + numbers.Length + " lb=1");
+                            return;
+                        }
+                        catch (Exception ex)
+                        {
+                            last = ex;
+                            ClearError();
+                            CapeTrace.Write("SetOverallProp " + name + " " + b + " " + ex.Message);
+                        }
                     }
                 }
+                throw new InvalidOperationException(
+                    "SetOverallProp " + property + ": " + (last == null ? "failed" : last.Message),
+                    last);
             }
-            throw new InvalidOperationException(
-                "SetOverallProp " + property + ": " + (last == null ? "failed" : last.Message),
-                last);
+            finally
+            {
+                ReleaseRcw(raw);
+            }
         }
 
         static string[] BasisForms(string basis)
