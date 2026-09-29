@@ -142,15 +142,24 @@ namespace PhD.DfmMethanation
         void Disconnect();
     }
 
+    /// <summary>
+    /// Official CAPE-OPEN vtable and dispids. Aspen early-binds this order:
+    /// parameters, simulationContext, Initialize, Terminate, Edit.
+    /// </summary>
     [ComVisible(true)]
     [Guid(Guids.ICapeUtilities)]
     [InterfaceType(ComInterfaceType.InterfaceIsDual)]
     public interface ICapeUtilities
     {
-        void Initialize();
-        void Terminate();
+        [DispId(1)]
+        ICapeCollection Parameters { [return: MarshalAs(UnmanagedType.IDispatch)] get; }
+        [DispId(2)]
         object simulationContext { [param: MarshalAs(UnmanagedType.IDispatch)] set; }
-        ICapeCollection Parameters { get; }
+        [DispId(3)]
+        void Initialize();
+        [DispId(4)]
+        void Terminate();
+        [DispId(5)]
         void Edit();
     }
 

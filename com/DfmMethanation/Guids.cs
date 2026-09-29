@@ -9,7 +9,7 @@ namespace PhD.DfmMethanation
         public const string Clsid = "187B8CDA-40ED-463E-B455-4D45A7D209FD";
         public const string ProgId = "PhD.DFM.Methanation.1";
         public const string UnitName = "DFM Methanation Reactor";
-        public const string CapeVersion = "1.1";
+        public const string CapeVersion = "1.0";
 
         public const string CatidUnit = "{678C09A5-7D66-11D2-A67D-00105A42887F}";
         public const string CatidPmc = "{678C09A1-7D66-11D2-A67D-00105A42887F}";

@@ -59,8 +59,22 @@ namespace PhD.DfmMethanation
 
         public string ComponentName { get; set; }
         public string ComponentDescription { get; set; }
-        public ICapeCollection ports => _ports;
-        public ICapeCollection Parameters => _params;
+        public ICapeCollection ports
+        {
+            get
+            {
+                CapeTrace.Write("ports n=" + _ports.Count);
+                return _ports;
+            }
+        }
+        public ICapeCollection Parameters
+        {
+            get
+            {
+                CapeTrace.Write("parameters n=" + _params.Count);
+                return _params;
+            }
+        }
         public CapeValidationStatus ValStatus => _val;
         public object simulationContext
         {
