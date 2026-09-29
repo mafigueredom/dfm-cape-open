@@ -54,6 +54,7 @@ namespace PhD.DfmMethanation
     [InterfaceType(ComInterfaceType.InterfaceIsDual)]
     public interface ICapeCollection
     {
+        [return: MarshalAs(UnmanagedType.IDispatch)]
         object Item(object index);
         int Count { get; }
     }
@@ -67,6 +68,7 @@ namespace PhD.DfmMethanation
     [InterfaceType(ComInterfaceType.InterfaceIsDual)]
     public interface ICapeParameter
     {
+        [return: MarshalAs(UnmanagedType.IDispatch)]
         object Specification { get; }
         object value { get; set; }
         CapeValidationStatus ValStatus { get; }
@@ -133,8 +135,9 @@ namespace PhD.DfmMethanation
     {
         CapePortType portType { get; }
         CapePortDirection direction { get; }
+        [return: MarshalAs(UnmanagedType.IDispatch)]
         object connectedObject { get; }
-        void Connect(object objectToConnect);
+        void Connect([MarshalAs(UnmanagedType.IDispatch)] object objectToConnect);
         void Disconnect();
     }
 
@@ -145,7 +148,7 @@ namespace PhD.DfmMethanation
     {
         void Initialize();
         void Terminate();
-        object simulationContext { set; }
+        object simulationContext { [param: MarshalAs(UnmanagedType.IDispatch)] set; }
         ICapeCollection Parameters { get; }
         void Edit();
     }
