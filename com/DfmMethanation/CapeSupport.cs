@@ -22,12 +22,15 @@ namespace PhD.DfmMethanation
 
         public object Item(object index)
         {
-            if (index is string s)
-                return _byName[s];
-            int i = Convert.ToInt32(index);
-            if (i < 1 || i > _items.Count)
-                throw new IndexOutOfRangeException("CAPE-OPEN collections are 1-based");
-            return _items[i - 1];
+            return CapeTrace.Guard("Item " + index, () =>
+            {
+                if (index is string s)
+                    return _byName[s];
+                int i = Convert.ToInt32(index);
+                if (i < 1 || i > _items.Count)
+                    throw new IndexOutOfRangeException("CAPE-OPEN collections are 1-based");
+                return _items[i - 1];
+            });
         }
 
         public int Count => _items.Count;
@@ -55,8 +58,17 @@ namespace PhD.DfmMethanation
         public CapePortDirection direction { get; }
         public object connectedObject => _connected;
 
-        public void Connect(object objectToConnect) => _connected = objectToConnect;
-        public void Disconnect() => _connected = null;
+        public void Connect(object objectToConnect)
+        {
+            CapeTrace.Write("Connect " + ComponentName + " " + (objectToConnect == null ? "null" : "object"));
+            _connected = objectToConnect;
+        }
+
+        public void Disconnect()
+        {
+            CapeTrace.Write("Disconnect " + ComponentName);
+            _connected = null;
+        }
     }
 
     /// <summary>
@@ -82,20 +94,37 @@ namespace PhD.DfmMethanation
         public string ComponentDescription { get; set; }
         public CapeParamMode Mode { get; set; }
         public CapeValidationStatus ValStatus { get; protected set; }
-        public object Specification => this;
+        public object Specification
+        {
+            get
+            {
+                CapeTrace.Write("Specification " + ComponentName);
+                return this;
+            }
+        }
         // COFE indexes this array while drawing the parameter dialog. An empty
         // vector is an access violation. Nine zeros means dimensionless.
-        public object Dimensionality => new double[9];
+        public object Dimensionality
+        {
+            get
+            {
+                CapeTrace.Write("Dimensionality " + ComponentName);
+                return new double[9];
+            }
+        }
 
         public object value
         {
             get => _value;
             set
             {
-                if (value == null)
-                    return;
-                _value = Coerce(value);
-                ValStatus = CapeValidationStatus.CAPE_NOT_VALIDATED;
+                CapeTrace.Guard("value " + ComponentName, () =>
+                {
+                    if (value == null)
+                        return;
+                    _value = Coerce(value);
+                    ValStatus = CapeValidationStatus.CAPE_NOT_VALIDATED;
+                });
             }
         }
 
@@ -131,10 +160,22 @@ namespace PhD.DfmMethanation
         {
         }
 
-        public CapeParamType Type => CapeParamType.CAPE_REAL;
-        public double DefaultValue => Convert.ToDouble(DefaultObject, CultureInfo.InvariantCulture);
-        public double LowerBound => -1e30;
-        public double UpperBound => 1e30;
+        public CapeParamType Type
+        {
+            get { CapeTrace.Write("Type " + ComponentName + " REAL"); return CapeParamType.CAPE_REAL; }
+        }
+        public double DefaultValue
+        {
+            get { CapeTrace.Write("DefaultValue " + ComponentName); return Convert.ToDouble(DefaultObject, CultureInfo.InvariantCulture); }
+        }
+        public double LowerBound
+        {
+            get { CapeTrace.Write("LowerBound " + ComponentName); return -1e30; }
+        }
+        public double UpperBound
+        {
+            get { CapeTrace.Write("UpperBound " + ComponentName); return 1e30; }
+        }
 
         public bool Validate(double value, ref string message)
         {
@@ -159,7 +200,10 @@ namespace PhD.DfmMethanation
             UpperBound = upper;
         }
 
-        public CapeParamType Type => CapeParamType.CAPE_INT;
+        public CapeParamType Type
+        {
+            get { CapeTrace.Write("Type " + ComponentName + " INT"); return CapeParamType.CAPE_INT; }
+        }
         public int DefaultValue => Convert.ToInt32(DefaultObject, CultureInfo.InvariantCulture);
         public int LowerBound { get; }
         public int UpperBound { get; }
@@ -189,7 +233,10 @@ namespace PhD.DfmMethanation
         {
         }
 
-        public CapeParamType Type => CapeParamType.CAPE_BOOLEAN;
+        public CapeParamType Type
+        {
+            get { CapeTrace.Write("Type " + ComponentName + " BOOLEAN"); return CapeParamType.CAPE_BOOLEAN; }
+        }
         public bool DefaultValue => Convert.ToBoolean(DefaultObject, CultureInfo.InvariantCulture);
 
         public bool Validate(bool value, ref string message)
@@ -225,9 +272,19 @@ namespace PhD.DfmMethanation
             RestrictedToList = restricted;
         }
 
-        public CapeParamType Type => CapeParamType.CAPE_OPTION;
+        public CapeParamType Type
+        {
+            get { CapeTrace.Write("Type " + ComponentName + " OPTION"); return CapeParamType.CAPE_OPTION; }
+        }
         public string DefaultValue => Convert.ToString(DefaultObject, CultureInfo.InvariantCulture);
-        public object OptionList => _options.Length == 0 ? new[] { DefaultValue } : _options;
+        public object OptionList
+        {
+            get
+            {
+                CapeTrace.Write("OptionList " + ComponentName);
+                return _options.Length == 0 ? new[] { DefaultValue } : _options;
+            }
+        }
         public bool RestrictedToList { get; }
 
         public bool Validate(string value, ref string message)

@@ -41,15 +41,19 @@ namespace PhD.DfmMethanation
         CapePort _feedAds, _feedPurge, _feedRxn, _feedPurge2, _product;
         Dictionary<string, object> _lastResult;
         string _selectedReport = "atom_balance";
+        object _simulationContext;
         CapeValidationStatus _val = CapeValidationStatus.CAPE_NOT_VALIDATED;
 
         public DfmUnit()
         {
-            ComponentName = Guids.UnitName;
-            ComponentDescription =
-                "Isothermal DFM methanation packed bed (cycle-average product).";
-            BuildPorts();
-            BuildParameters();
+            CapeTrace.Guard("DfmUnit", () =>
+            {
+                ComponentName = Guids.UnitName;
+                ComponentDescription =
+                    "Isothermal DFM methanation packed bed (cycle-average product).";
+                BuildPorts();
+                BuildParameters();
+            });
         }
 
         public string ComponentName { get; set; }
@@ -57,7 +61,15 @@ namespace PhD.DfmMethanation
         public ICapeCollection ports => _ports;
         public ICapeCollection Parameters => _params;
         public CapeValidationStatus ValStatus => _val;
-        public object simulationContext { get; set; }
+        public object simulationContext
+        {
+            get => _simulationContext;
+            set
+            {
+                CapeTrace.Write("simulationContext " + (value == null ? "null" : "set"));
+                _simulationContext = value;
+            }
+        }
         public object reports => new[] { "atom_balance", "outlet_C_raw", "outlet_C_sopdt" };
         public string selectedReport
         {
@@ -65,19 +77,31 @@ namespace PhD.DfmMethanation
             set => _selectedReport = value;
         }
 
-        public void Initialize() { }
-        public void Terminate() { }
+        public void Initialize()
+        {
+            CapeTrace.Write("Initialize");
+        }
+
+        public void Terminate()
+        {
+            CapeTrace.Write("Terminate");
+        }
+
         public void Edit()
         {
             // S_OK with no dialog makes COFE dereference a missing editor.
             // E_NOTIMPL tells it to open its own parameter list.
-            throw new COMException(
-                "No custom editor. Use the CAPE-OPEN parameter list.",
-                unchecked((int)0x80004001));
+            CapeTrace.Guard("Edit", () =>
+            {
+                throw new COMException(
+                    "No custom editor. Use the CAPE-OPEN parameter list.",
+                    unchecked((int)0x80004001));
+            });
         }
 
         public bool Validate(ref string message)
         {
+            CapeTrace.Write(">> Validate");
             try
             {
                 if (_feedAds.connectedObject == null ||
@@ -86,12 +110,14 @@ namespace PhD.DfmMethanation
                 {
                     message = "Feed_ads, Feed_purge and Feed_rxn must be connected.";
                     _val = CapeValidationStatus.CAPE_INVALID;
+                    CapeTrace.Write("<< Validate invalid feeds");
                     return false;
                 }
                 if (_product.connectedObject == null)
                 {
                     message = "Product must be connected.";
                     _val = CapeValidationStatus.CAPE_INVALID;
+                    CapeTrace.Write("<< Validate invalid product");
                     return false;
                 }
                 var t2 = P("t_purge2").AsDouble();
@@ -103,10 +129,12 @@ namespace PhD.DfmMethanation
                 }
                 message = "ok";
                 _val = CapeValidationStatus.CAPE_VALID;
+                CapeTrace.Write("<< Validate ok");
                 return true;
             }
             catch (Exception ex)
             {
+                CapeTrace.Write("!! Validate" + Environment.NewLine + ex);
                 message = ex.Message;
                 _val = CapeValidationStatus.CAPE_INVALID;
                 return false;
@@ -115,6 +143,8 @@ namespace PhD.DfmMethanation
 
         public void Calculate()
         {
+            CapeTrace.Guard("Calculate", () =>
+            {
             string msg = "";
             if (!Validate(ref msg))
                 throw new InvalidOperationException(msg);
@@ -141,6 +171,7 @@ namespace PhD.DfmMethanation
             {
                 try { Directory.Delete(work, true); } catch { }
             }
+            });
         }
 
         public string ProduceReport()
