@@ -40,6 +40,7 @@ namespace PhD.DfmMethanation
         readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 256 };
         CapePort _feedAds, _feedPurge, _feedRxn, _feedPurge2, _product;
         Dictionary<string, object> _lastResult;
+        static Dictionary<string, object> _sharedResult;
         string _selectedReport = "atom_balance";
         object _simulationContext;
         CapeValidationStatus _val = CapeValidationStatus.CAPE_NOT_VALIDATED;
@@ -70,10 +71,18 @@ namespace PhD.DfmMethanation
                 _simulationContext = value;
             }
         }
-        public object reports => new[]
+        public object reports
         {
-            "atom_balance", "outlet_C_raw", "outlet_C_sopdt", "profiles_C_z"
-        };
+            get
+            {
+                var names = new[] { "atom_balance", "outlet_C_raw", "outlet_C_sopdt", "profiles_C_z" };
+                var arr = Array.CreateInstance(typeof(string), new[] { names.Length }, new[] { 1 });
+                for (int i = 0; i < names.Length; i++)
+                    arr.SetValue(names[i], i + 1);
+                CapeTrace.Write("reports n=" + names.Length);
+                return arr;
+            }
+        }
         public string selectedReport
         {
             get => _selectedReport;
@@ -177,8 +186,8 @@ namespace PhD.DfmMethanation
                         extra.Append(" --t-end ").Append(tEnd.ToString(CultureInfo.InvariantCulture));
                     var raw = EngineClient.Run(work, P("docker_image").AsString(), extra.ToString());
                     _lastResult = _json.Deserialize<Dictionary<string, object>>(raw);
+                    _sharedResult = _lastResult;
                     WriteResultFile();
-                    ApplyProduct();
                     ApplyOutputs();
                     _val = CapeValidationStatus.CAPE_VALID;
                     CapeTrace.Write("<< Calculate");
@@ -198,20 +207,23 @@ namespace PhD.DfmMethanation
 
         public string ProduceReport()
         {
-            if (_lastResult == null)
+            CapeTrace.Write("ProduceReport " + _selectedReport);
+            if (Result == null)
                 return "No Calculate() result yet.\n";
             var fromCatalog = CatalogText(_selectedReport);
             if (!string.IsNullOrEmpty(fromCatalog))
                 return fromCatalog;
             if (string.Equals(_selectedReport, "atom_balance", StringComparison.OrdinalIgnoreCase)
-                && _lastResult.TryGetValue("report_text", out var t) && t != null)
+                && Result.TryGetValue("report_text", out var t) && t != null)
                 return Convert.ToString(t, CultureInfo.InvariantCulture);
             return "Report '" + _selectedReport + "' has no text on this run.\n";
         }
 
+        Dictionary<string, object> Result => _lastResult ?? _sharedResult;
+
         string CatalogText(string name)
         {
-            var entry = Dict(Dict(Dict(_lastResult, "reports"), "catalog"), name);
+            var entry = Dict(Dict(Dict(Result, "reports"), "catalog"), name);
             if (!entry.TryGetValue("text", out var text) || text == null)
                 return null;
             return Convert.ToString(text, CultureInfo.InvariantCulture);
@@ -319,60 +331,6 @@ namespace PhD.DfmMethanation
             };
         }
 
-        void ApplyProduct()
-        {
-            var mo = _product.MaterialObject;
-            try
-            {
-                ApplyProduct(mo);
-            }
-            finally
-            {
-                ThermoBridge.ReleaseRcw(mo);
-            }
-        }
-
-        void ApplyProduct(object mo)
-        {
-            var product = Dict(_lastResult, "product");
-            var fss = Dict(product, "F_ss_mol_s");
-            double total = 0.0;
-            foreach (var sp in Species)
-                total += ToD(fss, sp);
-            var cas = ThermoBridge.GetCasNumbers(mo);
-            foreach (var need in SpToCas.Values)
-            {
-                bool found = false;
-                foreach (var c in cas)
-                    if (string.Equals(c, need, StringComparison.OrdinalIgnoreCase))
-                        found = true;
-                if (!found)
-                    throw new InvalidOperationException("PP missing CAS " + need);
-            }
-            var y = new double[cas.Length];
-            for (int i = 0; i < cas.Length; i++)
-            {
-                if (CasToSp.TryGetValue(cas[i], out var sp))
-                    y[i] = total > 0.0 ? ToD(fss, sp) / total : 0.0;
-                else
-                    y[i] = 0.0;
-            }
-            var flows = new double[cas.Length];
-            for (int i = 0; i < cas.Length; i++)
-            {
-                if (CasToSp.TryGetValue(cas[i], out var sp))
-                    flows[i] = ToD(fss, sp);
-            }
-            // TEA rejects SetOverallProp for temperature and pressure (0x80040501).
-            // COFE reads SAFEARRAYs as 1-based; a 0-based array is released as a crash.
-            bool flowOk = ThermoBridge.TrySetOverall(mo, "flow", flows, "mole");
-            bool fracOk = ThermoBridge.TrySetOverall(mo, "fraction", y, "mole");
-            ThermoBridge.TrySetOverall(mo, "totalFlow", new[] { total }, "mole");
-            ThermoBridge.ClearError();
-            if (!flowOk || !fracOk)
-                throw new InvalidOperationException("Could not write product flow or composition.");
-        }
-
         void ApplyOutputs()
         {
             var outputs = Dict(_lastResult, "outputs");
@@ -413,6 +371,10 @@ namespace PhD.DfmMethanation
             }
             File.WriteAllText(path, text.ToString());
             CapeTrace.Write("result file " + path);
+            CapeTrace.Write(
+                "solved CH4_mol_s=" + ToD(fss, "CH4").ToString("G6", CultureInfo.InvariantCulture)
+                + " Y_CH4=" + Convert.ToString(outputs.ContainsKey("Y_CH4") ? outputs["Y_CH4"] : "", CultureInfo.InvariantCulture)
+                + " balance_ok=" + Convert.ToString(outputs.ContainsKey("balance_ok") ? outputs["balance_ok"] : "", CultureInfo.InvariantCulture));
         }
 
         static Dictionary<string, object> Dict(Dictionary<string, object> parent, string key)
