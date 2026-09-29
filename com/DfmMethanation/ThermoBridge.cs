@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -299,31 +300,110 @@ namespace PhD.DfmMethanation
             }
         }
 
+        static readonly Guid IidPhases = new Guid("678C0A9E-7D66-11D2-A67D-00105A42887F");
+
         public static void EnsurePhases(object mo)
+        {
+            var known = PhaseLabels(mo);
+            var candidates = new List<string[]>();
+            if (known.Length > 0)
+                candidates.Add(known);
+            candidates.Add(new[] { "Vapour", "Liquid" });
+            candidates.Add(new[] { "Vapor", "Liquid" });
+            candidates.Add(new[] { "gas", "liquid" });
+            foreach (var labels in candidates)
+            {
+                if (TrySetPhases(mo, labels))
+                    return;
+            }
+            CapeTrace.Write("SetPresentPhases none accepted");
+        }
+
+        static string[] PhaseLabels(object mo)
         {
             object raw = null;
             try
             {
-                raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
-                var mat = (ICapeThermoMaterial11)raw;
-                object labels, status;
-                mat.GetPresentPhases(out labels, out status);
-                if (ToStrings(labels).Length > 0)
-                    return;
-                mat.SetPresentPhases(
-                    new[] { "Vapor", "Liquid" },
-                    new[] { "Cape_UnknownPhaseStatus", "Cape_UnknownPhaseStatus" });
-                CapeTrace.Write("SetPresentPhases Vapor,Liquid");
+                raw = AsInterface(mo, IidPhases, typeof(ICapeThermoPhases));
+                object labels, state, key;
+                ((ICapeThermoPhases)raw).GetPhaseList(out labels, out state, out key);
+                var names = ToStrings(labels);
+                CapeTrace.Write(
+                    "GetPhaseList " + string.Join(",", names)
+                    + " state=" + string.Join(",", ToStrings(state)));
+                return names;
             }
             catch (Exception ex)
             {
                 ClearError();
-                CapeTrace.Write("SetPresentPhases " + ex.GetBaseException().Message);
+                CapeTrace.Write("GetPhaseList " + ex.GetBaseException().Message);
+                return new string[0];
             }
             finally
             {
                 ReleaseRcw(raw);
             }
+        }
+
+        static bool TrySetPhases(object mo, string[] labels)
+        {
+            var statusText = new string[labels.Length];
+            var statusInt = new int[labels.Length];
+            for (int i = 0; i < labels.Length; i++)
+            {
+                statusText[i] = "Cape_UnknownPhaseStatus";
+                statusInt[i] = 0;
+            }
+            var attempts = new[]
+            {
+                new object[] { labels, statusText },
+                new object[] { OneBasedStrings(labels), OneBasedStrings(statusText) },
+                new object[] { labels, statusInt },
+                new object[] { OneBasedStrings(labels), OneBasedInts(statusInt) }
+            };
+            object raw = null;
+            try
+            {
+                raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+                var mat = (ICapeThermoMaterial11)raw;
+                foreach (var attempt in attempts)
+                {
+                    try
+                    {
+                        mat.SetPresentPhases(attempt[0], attempt[1]);
+                        CapeTrace.Write("SetPresentPhases " + string.Join(",", labels));
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        ClearError();
+                        CapeTrace.Write(
+                            "SetPresentPhases " + string.Join(",", labels) + " "
+                            + ex.GetBaseException().Message);
+                    }
+                }
+                return false;
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
+        }
+
+        static Array OneBasedStrings(string[] values)
+        {
+            var arr = Array.CreateInstance(typeof(string), new[] { values.Length }, new[] { 1 });
+            for (int i = 0; i < values.Length; i++)
+                arr.SetValue(values[i], i + 1);
+            return arr;
+        }
+
+        static Array OneBasedInts(int[] values)
+        {
+            var arr = Array.CreateInstance(typeof(int), new[] { values.Length }, new[] { 1 });
+            for (int i = 0; i < values.Length; i++)
+                arr.SetValue(values[i], i + 1);
+            return arr;
         }
 
         public static void FlashEquilibrium(object mo)
@@ -463,6 +543,17 @@ namespace PhD.DfmMethanation
         void SetPresentPhases(
             [MarshalAs(UnmanagedType.Struct)] object phaseLabels,
             [MarshalAs(UnmanagedType.Struct)] object phaseStatus);
+    }
+
+    // GetPhaseList is dispid 3.
+    [ComImport]
+    [Guid("678C0A9E-7D66-11D2-A67D-00105A42887F")]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    internal interface ICapeThermoPhases
+    {
+        int GetNumPhases();
+        object GetPhaseInfo(string phaseLabel, string phaseAttribute);
+        void GetPhaseList(out object phaseLabels, out object stateOfAggregation, out object keyCompoundId);
     }
 
     // Dispid 1 on this interface, so it is the first vtable method.
