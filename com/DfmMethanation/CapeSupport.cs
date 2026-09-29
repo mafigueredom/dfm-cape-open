@@ -83,7 +83,9 @@ namespace PhD.DfmMethanation
         public CapeParamMode Mode { get; set; }
         public CapeValidationStatus ValStatus { get; protected set; }
         public object Specification => this;
-        public object Dimensionality => Array.Empty<double>();
+        // COFE indexes this array while drawing the parameter dialog. An empty
+        // vector is an access violation. Nine zeros means dimensionless.
+        public object Dimensionality => new double[9];
 
         public object value
         {
@@ -131,8 +133,8 @@ namespace PhD.DfmMethanation
 
         public CapeParamType Type => CapeParamType.CAPE_REAL;
         public double DefaultValue => Convert.ToDouble(DefaultObject, CultureInfo.InvariantCulture);
-        public double LowerBound => double.NaN;
-        public double UpperBound => double.NaN;
+        public double LowerBound => -1e30;
+        public double UpperBound => 1e30;
 
         public bool Validate(double value, ref string message)
         {
@@ -150,7 +152,7 @@ namespace PhD.DfmMethanation
     public class CapeIntegerParameter : CapeParameter, ICapeParameter, ICapeParameterSpec, ICapeIntegerParameterSpec
     {
         public CapeIntegerParameter(string name, int value, CapeParamMode mode, string desc = null,
-            int lower = int.MinValue, int upper = int.MaxValue)
+            int lower = -1000000000, int upper = 1000000000)
             : base(name, value, mode, desc)
         {
             LowerBound = lower;
@@ -225,7 +227,7 @@ namespace PhD.DfmMethanation
 
         public CapeParamType Type => CapeParamType.CAPE_OPTION;
         public string DefaultValue => Convert.ToString(DefaultObject, CultureInfo.InvariantCulture);
-        public object OptionList => _options;
+        public object OptionList => _options.Length == 0 ? new[] { DefaultValue } : _options;
         public bool RestrictedToList { get; }
 
         public bool Validate(string value, ref string message)

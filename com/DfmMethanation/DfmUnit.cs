@@ -67,7 +67,14 @@ namespace PhD.DfmMethanation
 
         public void Initialize() { }
         public void Terminate() { }
-        public void Edit() { }
+        public void Edit()
+        {
+            // S_OK with no dialog makes COFE dereference a missing editor.
+            // E_NOTIMPL tells it to open its own parameter list.
+            throw new COMException(
+                "No custom editor. Use the CAPE-OPEN parameter list.",
+                unchecked((int)0x80004001));
+        }
 
         public bool Validate(ref string message)
         {
