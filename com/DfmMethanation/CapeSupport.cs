@@ -43,31 +43,100 @@ namespace PhD.DfmMethanation
         [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A002")]
     public class CapePort : ICapeUnitPort, ICapeIdentification
     {
-        object _connected;
+        static readonly Guid IidIDispatch = new Guid("00020400-0000-0000-C000-000000000046");
+        IntPtr _unknown;
+        string _name;
+        string _description;
+
+        readonly CapePortDirection _direction;
 
         public CapePort(string name, CapePortDirection dir)
         {
-            ComponentName = name;
-            ComponentDescription = name;
-            direction = dir;
+            _name = name;
+            _description = name;
+            _direction = dir;
         }
 
-        public string ComponentName { get; set; }
-        public string ComponentDescription { get; set; }
-        public CapePortType portType => CapePortType.CAPE_MATERIAL;
-        public CapePortDirection direction { get; }
-        public object connectedObject => _connected;
+        public string ComponentName
+        {
+            get
+            {
+                CapeTrace.Write("ComponentName " + _name);
+                return _name;
+            }
+            set => _name = value;
+        }
+
+        public string ComponentDescription
+        {
+            get
+            {
+                CapeTrace.Write("ComponentDescription " + _name);
+                return _description;
+            }
+            set => _description = value;
+        }
+
+        public CapePortType portType
+        {
+            get
+            {
+                CapeTrace.Write("portType " + _name);
+                return CapePortType.CAPE_MATERIAL;
+            }
+        }
+
+        public CapePortDirection direction
+        {
+            get
+            {
+                CapeTrace.Write("direction " + _name + " " + _direction);
+                return _direction;
+            }
+        }
+
+        public object connectedObject
+        {
+            get
+            {
+                CapeTrace.Write("connectedObject " + _name + " " + (_unknown == IntPtr.Zero ? "null" : "ptr"));
+                if (_unknown == IntPtr.Zero)
+                    return null;
+                // Hand back TEA's own IDispatch. Returning the stored RCW wraps it again and COFE crashes.
+                Guid iid = IidIDispatch;
+                IntPtr dispatch;
+                int hr = Marshal.QueryInterface(_unknown, ref iid, out dispatch);
+                if (hr < 0 || dispatch == IntPtr.Zero)
+                {
+                    CapeTrace.Write("connectedObject QI IDispatch failed 0x" + hr.ToString("X8"));
+                    return null;
+                }
+                object rcw = Marshal.GetObjectForIUnknown(dispatch);
+                Marshal.Release(dispatch);
+                return rcw;
+            }
+        }
 
         public void Connect(object objectToConnect)
         {
-            CapeTrace.Write("Connect " + ComponentName + " " + (objectToConnect == null ? "null" : "object"));
-            _connected = objectToConnect;
+            CapeTrace.Write("Connect " + _name + " " + (objectToConnect == null ? "null" : "object"));
+            ReleaseUnknown();
+            if (objectToConnect != null)
+                _unknown = Marshal.GetIUnknownForObject(objectToConnect);
         }
 
         public void Disconnect()
         {
-            CapeTrace.Write("Disconnect " + ComponentName);
-            _connected = null;
+            CapeTrace.Write("Disconnect " + _name);
+            ReleaseUnknown();
+        }
+
+        void ReleaseUnknown()
+        {
+            if (_unknown == IntPtr.Zero)
+                return;
+            Marshal.Release(_unknown);
+            _unknown = IntPtr.Zero;
         }
     }
 
