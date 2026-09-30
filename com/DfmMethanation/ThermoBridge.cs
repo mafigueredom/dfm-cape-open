@@ -421,15 +421,22 @@ namespace PhD.DfmMethanation
             }
             try
             {
-                ((ICapeThermoEquilibriumRoutine11)raw).CalcEquilibrium(
-                    "temperature", "pressure", "Unspecified");
-                CapeTrace.Write("CalcEquilibrium temperature pressure ok");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                ClearError();
-                CapeTrace.Write("CalcEquilibrium " + ex.GetBaseException().Message);
+                var routine = (ICapeThermoEquilibriumRoutine11)raw;
+                foreach (var solution in new[] { "Unspecified", "Vapor" })
+                {
+                    try
+                    {
+                        routine.CalcEquilibrium("temperature", "pressure", solution);
+                        CapeTrace.Write("CalcEquilibrium temperature pressure " + solution + " ok");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        ClearError();
+                        CapeTrace.Write(
+                            "CalcEquilibrium " + solution + " " + ex.GetBaseException().Message);
+                    }
+                }
                 return false;
             }
             finally
@@ -452,8 +459,20 @@ namespace PhD.DfmMethanation
                 TryPhaseProp(mat, "phaseFraction", "Vapor", "Mole", new[] { 1.0 });
                 TryPhaseProp(mat, "temperature", "Vapor", "", new[] { temperature });
                 TryPhaseProp(mat, "pressure", "Vapor", "", new[] { pressure });
-                mat.SetPresentPhases(new[] { "Vapor", "Liquid" }, new[] { 1, 0 });
-                CapeTrace.Write("SetPresentPhases Vapor equilibrium");
+                // COFE rejects the outlet if any present phase stays below equilibrium.
+                // Liquid at status 0 counts as not flashed, so the outlet is vapor only.
+                try
+                {
+                    mat.SetPresentPhases(new[] { "Vapor" }, new[] { 1 });
+                    CapeTrace.Write("SetPresentPhases Vapor equilibrium");
+                }
+                catch (Exception ex)
+                {
+                    ClearError();
+                    CapeTrace.Write("SetPresentPhases Vapor " + ex.GetBaseException().Message);
+                    mat.SetPresentPhases(new[] { "Vapor", "Liquid" }, new[] { 1, 1 });
+                    CapeTrace.Write("SetPresentPhases Vapor Liquid equilibrium");
+                }
             }
             catch (Exception ex)
             {

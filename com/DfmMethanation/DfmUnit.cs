@@ -82,8 +82,10 @@ namespace PhD.DfmMethanation
             get => _simulationContext;
             set
             {
-                CapeTrace.Write("simulationContext " + (value == null ? "null" : "set"));
+                if (!ReferenceEquals(_simulationContext, value))
+                    ReleaseSimulationContext();
                 _simulationContext = value;
+                CapeTrace.Write("simulationContext " + (value == null ? "null" : "set"));
             }
         }
         public object reports
@@ -112,6 +114,31 @@ namespace PhD.DfmMethanation
         public void Terminate()
         {
             CapeTrace.Write("Terminate");
+            ReleaseSimulationContext();
+        }
+
+        void ReleaseSimulationContext()
+        {
+            var ctx = _simulationContext;
+            _simulationContext = null;
+            if (ctx == null)
+                return;
+            try
+            {
+                int left;
+                var guard = 0;
+                do
+                {
+                    left = Marshal.ReleaseComObject(ctx);
+                    guard++;
+                }
+                while (left > 0 && guard < 8);
+                CapeTrace.Write("simulationContext released " + left);
+            }
+            catch (Exception ex)
+            {
+                CapeTrace.Write("simulationContext release " + ex.GetBaseException().Message);
+            }
         }
 
         public void GetClassID(out Guid classId)
