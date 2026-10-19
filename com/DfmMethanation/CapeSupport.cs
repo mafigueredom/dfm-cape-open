@@ -98,6 +98,23 @@ namespace PhD.DfmMethanation
 
         public object MaterialObject => _connected;
 
+        public object Borrow()
+        {
+            if (_connected == null)
+                return null;
+            // Extra RCW count so thermo calls can release their own wrapper
+            // without dropping the reference held for COFE.
+            IntPtr unk = Marshal.GetIUnknownForObject(_connected);
+            try
+            {
+                return Marshal.GetObjectForIUnknown(unk);
+            }
+            finally
+            {
+                Marshal.Release(unk);
+            }
+        }
+
         public int get_connectedObject(out IntPtr connectedObject)
         {
             if (_connected == null)

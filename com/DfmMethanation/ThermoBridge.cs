@@ -523,11 +523,90 @@ namespace PhD.DfmMethanation
                 || name.IndexOf("gas", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        public static string VaporPhaseName(object mo)
+        {
+            foreach (var name in PhaseLabels(mo))
+            {
+                if (IsVaporPhase(name))
+                    return name;
+            }
+            return "Vapor";
+        }
+
+        public static void KeepOnlyPhase(object mo, string phase)
+        {
+            object raw = null;
+            try
+            {
+                raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+                if (TryPresent((ICapeThermoMaterial11)raw, new[] { phase }, 0))
+                    CapeTrace.Write("SetPresentPhases only " + phase);
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("KeepOnlyPhase " + ex.GetBaseException().Message);
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
+        }
+
+        static readonly Guid IidEquilibrium = new Guid("678C0AA0-7D66-11D2-A67D-00105A42887F");
+
+        public static bool FlashVapor(object mo, string vaporPhase)
+        {
+            object raw = null;
+            try
+            {
+                raw = AsInterface(mo, IidEquilibrium, typeof(ICapeThermoEquilibriumRoutine11));
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("Flash no equilibrium " + ex.GetBaseException().Message);
+                return false;
+            }
+            try
+            {
+                var routine = (ICapeThermoEquilibriumRoutine11)raw;
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var solution in new[] { vaporPhase, "Vapor", "Vapour" })
+                {
+                    if (string.IsNullOrWhiteSpace(solution) || !seen.Add(solution))
+                        continue;
+                    try
+                    {
+                        routine.CalcEquilibrium("temperature", "pressure", solution);
+                        CapeTrace.Write("CalcEquilibrium temperature pressure " + solution + " ok");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        ClearError();
+                        CapeTrace.Write(
+                            "CalcEquilibrium " + solution + " " + ex.GetBaseException().Message);
+                    }
+                }
+                return false;
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
+        }
+
         static bool TryPresentEquilibrium(ICapeThermoMaterial11 mat, string[] labels)
+        {
+            return TryPresent(mat, labels, 1);
+        }
+
+        static bool TryPresent(ICapeThermoMaterial11 mat, string[] labels, int phaseStatus)
         {
             var status = new int[labels.Length];
             for (int i = 0; i < status.Length; i++)
-                status[i] = 1;
+                status[i] = phaseStatus;
             var attempts = new[]
             {
                 new object[] { labels, status },
@@ -693,6 +772,18 @@ namespace PhD.DfmMethanation
         int GetNumPhases();
         object GetPhaseInfo(string phaseLabel, string phaseAttribute);
         void GetPhaseList(out object phaseLabels, out object stateOfAggregation, out object keyCompoundId);
+    }
+
+    // Dispid 1. A vapor solution type lets TEA accept an all-gas TP flash.
+    [ComImport]
+    [Guid("678C0AA0-7D66-11D2-A67D-00105A42887F")]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    internal interface ICapeThermoEquilibriumRoutine11
+    {
+        void CalcEquilibrium(
+            [MarshalAs(UnmanagedType.Struct)] object specification1,
+            [MarshalAs(UnmanagedType.Struct)] object specification2,
+            [MarshalAs(UnmanagedType.BStr)] string solutionType);
     }
 
 }

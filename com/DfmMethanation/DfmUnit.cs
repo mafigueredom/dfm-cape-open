@@ -454,14 +454,21 @@ namespace PhD.DfmMethanation
         Dictionary<string, object> ReadFeed(CapePort port, bool required)
         {
             CapeTrace.Write("ReadFeed " + port.ComponentName);
-            var mo = port.MaterialObject;
+            var mo = port.Borrow();
             if (mo == null)
             {
                 if (required)
                     throw new InvalidOperationException(port.ComponentName + " is not connected");
                 return null;
             }
-            return ReadFeed(mo, port.ComponentName);
+            try
+            {
+                return ReadFeed(mo, port.ComponentName);
+            }
+            finally
+            {
+                ThermoBridge.ReleaseRcw(mo);
+            }
         }
 
         Dictionary<string, object> ReadFeed(object mo, string portName)
@@ -525,7 +532,7 @@ namespace PhD.DfmMethanation
             // COFE aborts with "did not flash outlet stream 4" unless Product
             // is flashed before Calculate returns. Stream 4 is this outlet.
             CapeTrace.Write(">> WriteProduct");
-            var mo = _product.MaterialObject;
+            var mo = _product.Borrow();
             if (mo == null)
             {
                 CapeTrace.Write("WriteProduct no product");
@@ -567,6 +574,10 @@ namespace PhD.DfmMethanation
                 ThermoBridge.ClearError();
                 CapeTrace.Write("!! WriteProduct " + ex.GetBaseException().Message);
             }
+            finally
+            {
+                ThermoBridge.ReleaseRcw(mo);
+            }
         }
 
         void WriteSolidCo2()
@@ -574,7 +585,7 @@ namespace PhD.DfmMethanation
             // Aspen balances only the ports on this block. The CO2 still on the
             // catalyst is inventory, so it leaves here as pure CO2 and stays out of Product.
             CapeTrace.Write(">> WriteSolidCo2");
-            var mo = _co2Solid.MaterialObject;
+            var mo = _co2Solid.Borrow();
             if (mo == null)
             {
                 CapeTrace.Write("WriteSolidCo2 no port");
@@ -614,6 +625,10 @@ namespace PhD.DfmMethanation
                 ThermoBridge.ClearError();
                 CapeTrace.Write("!! WriteSolidCo2 " + ex.GetBaseException().Message);
             }
+            finally
+            {
+                ThermoBridge.ReleaseRcw(mo);
+            }
         }
 
         double SolidCo2Rate()
@@ -652,11 +667,13 @@ namespace PhD.DfmMethanation
             ThermoBridge.TrySetOverall(mo, "flow", flow, "mole");
             ThermoBridge.TrySetOverall(mo, "temperature", temperature);
             ThermoBridge.TrySetOverall(mo, "pressure", pressure);
+            var vapor = ThermoBridge.VaporPhaseName(mo);
             ThermoBridge.EnsurePhases(mo);
-            // TEA's TP flash returns an error for an all-gas mixture. COFE then
-            // reports that the outlet cannot be flashed. Mark the vapor phase
-            // directly so COFE does not attempt that flash.
-            ThermoBridge.MarkVaporFlashed(mo, fraction, temperature, pressure);
+            ThermoBridge.KeepOnlyPhase(mo, vapor);
+            // An unrestricted TP flash fails for this all-gas mixture. Asking
+            // TEA for the vapor solution is what sets the phase to equilibrium.
+            if (!ThermoBridge.FlashVapor(mo, vapor) || !ThermoBridge.PresentPhasesAtEquilibrium(mo))
+                ThermoBridge.MarkVaporFlashed(mo, fraction, temperature, pressure);
             ThermoBridge.ClearError();
             ThermoBridge.LogPhases(mo, "after");
             if (!ThermoBridge.PresentPhasesAtEquilibrium(mo))
