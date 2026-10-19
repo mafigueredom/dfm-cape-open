@@ -175,10 +175,40 @@ namespace PhD.DfmMethanation
         [DllImport("oleaut32.dll", PreserveSig = true)]
         static extern int SetErrorInfo(int dwReserved, IntPtr perrinfo);
 
+        [DllImport("oleaut32.dll", PreserveSig = true)]
+        static extern int GetErrorInfo(int dwReserved, out IntPtr perrinfo);
+
         public static void ClearError()
         {
             try { SetErrorInfo(0, IntPtr.Zero); }
             catch { }
+        }
+
+        static string ErrorText(Exception ex)
+        {
+            var msg = ex.GetBaseException().Message;
+            IntPtr info = IntPtr.Zero;
+            object rcw = null;
+            try
+            {
+                if (GetErrorInfo(0, out info) != 0 || info == IntPtr.Zero)
+                    return msg;
+                rcw = Marshal.GetObjectForIUnknown(info);
+                ((IErrorInfo)rcw).GetDescription(out string description);
+                if (string.IsNullOrWhiteSpace(description))
+                    return msg;
+                return msg + " | " + description;
+            }
+            catch
+            {
+                return msg;
+            }
+            finally
+            {
+                if (info != IntPtr.Zero)
+                    Marshal.Release(info);
+                ReleaseRcw(rcw);
+            }
         }
 
         public static IntPtr QueryMaterialInterface(object comObject)
@@ -597,41 +627,27 @@ namespace PhD.DfmMethanation
             try
             {
                 var routine = (ICapeThermoEquilibriumRoutine11)raw;
-                // solutionType "Vapor" is not a CAPE-OPEN solution type. For a
-                // TP flash it must be Unspecified, and only the vapor phase
-                // may be present or TEA reports a trivial two-phase solution.
-                var attempts = new[]
+                // specification1 and specification2 are string arrays, not
+                // single strings. A bare string is why every flash returned
+                // 0x80040501 before TEA could mark the vapor phase.
+                var specs = new[]
                 {
                     new[] { "temperature", "pressure", "Unspecified" },
-                    new[] { "pressure", "temperature", "Unspecified" },
-                    new[] { "temperature", "pressure", "Normal" },
                     new[] { "pressure", "phaseFraction", "Unspecified" },
                     new[] { "pressure", "phaseFraction", "Normal" }
                 };
-                foreach (var attempt in attempts)
+                foreach (var spec in specs)
                 {
-                    try
-                    {
-                        routine.CalcEquilibrium(attempt[0], attempt[1], attempt[2]);
-                        CapeTrace.Write(
-                            "CalcEquilibrium " + attempt[0] + " " + attempt[1]
-                            + " " + attempt[2] + " ok");
-                        if (PresentPhasesAtEquilibrium(mo))
-                            return true;
-                        CapeTrace.Write("CalcEquilibrium ok but phases not at equilibrium");
-                    }
-                    catch (Exception ex)
-                    {
-                        ClearError();
-                        CapeTrace.Write(
-                            "CalcEquilibrium " + attempt[0] + " " + attempt[1] + " "
-                            + attempt[2] + " " + ex.GetBaseException().Message);
-                        if (PresentPhasesAtEquilibrium(mo))
-                        {
-                            CapeTrace.Write("CalcEquilibrium failed but phases are at equilibrium");
-                            return true;
-                        }
-                    }
+                    var tag = spec[0] + " " + spec[1] + " " + spec[2];
+                    if (TryEquilibrium(routine, mo, new[] { spec[0] }, new[] { spec[1] }, spec[2], tag + " lb=0"))
+                        return true;
+                    if (TryEquilibrium(
+                            routine, mo,
+                            OneBasedStrings(new[] { spec[0] }),
+                            OneBasedStrings(new[] { spec[1] }),
+                            spec[2],
+                            tag + " lb=1"))
+                        return true;
                 }
                 return false;
             }
@@ -639,6 +655,38 @@ namespace PhD.DfmMethanation
             {
                 ReleaseRcw(raw);
             }
+        }
+
+        static bool TryEquilibrium(
+            ICapeThermoEquilibriumRoutine11 routine,
+            object mo,
+            object specification1,
+            object specification2,
+            string solutionType,
+            string tag)
+        {
+            try
+            {
+                routine.CalcEquilibrium(specification1, specification2, solutionType);
+                CapeTrace.Write("CalcEquilibrium " + tag + " ok");
+                LogPhases(mo, "flash");
+                if (PresentPhasesAtEquilibrium(mo))
+                    return true;
+                CapeTrace.Write("CalcEquilibrium " + tag + " phases not equilibrium");
+            }
+            catch (Exception ex)
+            {
+                var text = ErrorText(ex);
+                ClearError();
+                CapeTrace.Write("CalcEquilibrium " + tag + " " + text);
+                LogPhases(mo, "flash");
+                if (PresentPhasesAtEquilibrium(mo))
+                {
+                    CapeTrace.Write("CalcEquilibrium " + tag + " phases are at equilibrium");
+                    return true;
+                }
+            }
+            return false;
         }
 
         static bool TryPresentEquilibrium(ICapeThermoMaterial11 mat, string[] labels)
@@ -816,6 +864,18 @@ namespace PhD.DfmMethanation
         int GetNumPhases();
         object GetPhaseInfo(string phaseLabel, string phaseAttribute);
         void GetPhaseList(out object phaseLabels, out object stateOfAggregation, out object keyCompoundId);
+    }
+
+    [ComImport]
+    [Guid("1CF2B120-547D-101B-8E65-08002B2BD119")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IErrorInfo
+    {
+        void GetGUID(out Guid guid);
+        void GetSource([MarshalAs(UnmanagedType.BStr)] out string source);
+        void GetDescription([MarshalAs(UnmanagedType.BStr)] out string description);
+        void GetHelpFile([MarshalAs(UnmanagedType.BStr)] out string helpFile);
+        void GetHelpContext(out int pdwHelpContext);
     }
 
     // Dispid 1. A vapor solution type lets TEA accept an all-gas TP flash.

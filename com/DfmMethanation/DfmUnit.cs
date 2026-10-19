@@ -670,7 +670,9 @@ namespace PhD.DfmMethanation
             var vapor = ThermoBridge.VaporPhaseName(mo);
             ThermoBridge.EnsurePhases(mo);
             ThermoBridge.KeepOnlyPhase(mo, vapor);
+            ThermoBridge.LogPhases(mo, "vapor-only");
             ThermoBridge.SetVaporState(mo, vapor, fraction, temperature, pressure);
+            ThermoBridge.TrySetOverall(mo, "phaseFraction", new[] { 1.0 }, "mole");
             // Both phases present makes TEA reject this all-gas mixture as a
             // trivial VLE. With only vapor present, a normal TP flash can
             // mark that phase at equilibrium.
