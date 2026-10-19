@@ -275,8 +275,6 @@ namespace PhD.DfmMethanation
             return new[] { basis };
         }
 
-        static readonly Guid IidEquilibrium = new Guid("678C0AA0-7D66-11D2-A67D-00105A42887F");
-
         public static void LogPhases(object mo, string tag)
         {
             object raw = null;
@@ -406,37 +404,30 @@ namespace PhD.DfmMethanation
             return arr;
         }
 
-        public static bool FlashEquilibrium(object mo)
+        public static bool PresentPhasesAtEquilibrium(object mo)
         {
             object raw = null;
             try
             {
-                raw = AsInterface(mo, IidEquilibrium, typeof(ICapeThermoEquilibriumRoutine11));
+                raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+                object labels, status;
+                ((ICapeThermoMaterial11)raw).GetPresentPhases(out labels, out status);
+                var names = ToStrings(labels);
+                var states = ToStrings(status);
+                if (names.Length == 0 || states.Length == 0)
+                    return false;
+                int n = Math.Min(names.Length, states.Length);
+                for (int i = 0; i < n; i++)
+                {
+                    if (!IsEquilibriumStatus(states[i]))
+                        return false;
+                }
+                return true;
             }
             catch (Exception ex)
             {
                 ClearError();
-                CapeTrace.Write("Flash no equilibrium routine " + ex.GetBaseException().Message);
-                return false;
-            }
-            try
-            {
-                var routine = (ICapeThermoEquilibriumRoutine11)raw;
-                foreach (var solution in new[] { "Unspecified", "Vapor" })
-                {
-                    try
-                    {
-                        routine.CalcEquilibrium("temperature", "pressure", solution);
-                        CapeTrace.Write("CalcEquilibrium temperature pressure " + solution + " ok");
-                        return true;
-                    }
-                    catch (Exception ex)
-                    {
-                        ClearError();
-                        CapeTrace.Write(
-                            "CalcEquilibrium " + solution + " " + ex.GetBaseException().Message);
-                    }
-                }
+                CapeTrace.Write("PresentPhases " + ex.GetBaseException().Message);
                 return false;
             }
             finally
@@ -445,34 +436,50 @@ namespace PhD.DfmMethanation
             }
         }
 
+        static bool IsEquilibriumStatus(string status)
+        {
+            if (string.IsNullOrWhiteSpace(status))
+                return false;
+            if (status.Trim() == "1")
+                return true;
+            return status.IndexOf("EQUILIBRIUM", StringComparison.OrdinalIgnoreCase) >= 0
+                && status.IndexOf("UNKNOWN", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
         public static void MarkVaporFlashed(object mo, double[] fraction, double temperature, double pressure)
         {
-            // CAPE_ATEQUILIBRIUM is 1. COFE rejects an outlet whose phases stay at 0.
-            // A single-phase gas makes TEA's own TP flash return an error, so the
-            // vapor phase is stored directly after the overall composition.
+            // COFE flashes an outlet itself when any present phase is not at
+            // equilibrium. TEA then rejects this all-gas stream as a trivial
+            // solution, and COFE stops the solve. Store the vapor phase at
+            // status 1 (CAPE_ATEQUILIBRIUM) and leave no liquid phase behind.
+            var labels = PhaseLabels(mo);
+            var vapor = "Vapor";
+            var liquid = "Liquid";
+            foreach (var name in labels)
+            {
+                if (IsVaporPhase(name))
+                    vapor = name;
+                else if (!string.IsNullOrWhiteSpace(name))
+                    liquid = name;
+            }
             object raw = null;
             try
             {
                 raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
                 var mat = (ICapeThermoMaterial11)raw;
-                TryPhaseProp(mat, "fraction", "Vapor", "Mole", fraction);
-                TryPhaseProp(mat, "phaseFraction", "Vapor", "Mole", new[] { 1.0 });
-                TryPhaseProp(mat, "temperature", "Vapor", "", new[] { temperature });
-                TryPhaseProp(mat, "pressure", "Vapor", "", new[] { pressure });
-                // COFE rejects the outlet if any present phase stays below equilibrium.
-                // Liquid at status 0 counts as not flashed, so the outlet is vapor only.
-                try
+                TryPhaseProp(mat, "fraction", vapor, "Mole", fraction);
+                TryPhaseProp(mat, "phaseFraction", vapor, "Mole", new[] { 1.0 });
+                TryPhaseProp(mat, "temperature", vapor, "", new[] { temperature });
+                TryPhaseProp(mat, "pressure", vapor, "", new[] { pressure });
+                if (TryPresentEquilibrium(mat, new[] { vapor }) && PresentPhasesAtEquilibrium(mo))
                 {
-                    mat.SetPresentPhases(new[] { "Vapor" }, new[] { 1 });
-                    CapeTrace.Write("SetPresentPhases Vapor equilibrium");
+                    CapeTrace.Write("SetPresentPhases " + vapor + " equilibrium");
+                    return;
                 }
-                catch (Exception ex)
-                {
-                    ClearError();
-                    CapeTrace.Write("SetPresentPhases Vapor " + ex.GetBaseException().Message);
-                    mat.SetPresentPhases(new[] { "Vapor", "Liquid" }, new[] { 1, 1 });
-                    CapeTrace.Write("SetPresentPhases Vapor Liquid equilibrium");
-                }
+                if (TryPresentEquilibrium(mat, new[] { vapor, liquid }) && PresentPhasesAtEquilibrium(mo))
+                    CapeTrace.Write("SetPresentPhases " + vapor + "," + liquid + " equilibrium");
+                else
+                    CapeTrace.Write("SetPresentPhases equilibrium not accepted");
             }
             catch (Exception ex)
             {
@@ -483,6 +490,42 @@ namespace PhD.DfmMethanation
             {
                 ReleaseRcw(raw);
             }
+        }
+
+        static bool IsVaporPhase(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+            return name.IndexOf("vap", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("gas", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        static bool TryPresentEquilibrium(ICapeThermoMaterial11 mat, string[] labels)
+        {
+            var status = new int[labels.Length];
+            for (int i = 0; i < status.Length; i++)
+                status[i] = 1;
+            var attempts = new[]
+            {
+                new object[] { labels, status },
+                new object[] { OneBasedStrings(labels), OneBasedInts(status) }
+            };
+            foreach (var attempt in attempts)
+            {
+                try
+                {
+                    mat.SetPresentPhases(attempt[0], attempt[1]);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    ClearError();
+                    CapeTrace.Write(
+                        "SetPresentPhases " + string.Join(",", labels) + " "
+                        + ex.GetBaseException().Message);
+                }
+            }
+            return false;
         }
 
         static void TryPhaseProp(
@@ -629,15 +672,4 @@ namespace PhD.DfmMethanation
         void GetPhaseList(out object phaseLabels, out object stateOfAggregation, out object keyCompoundId);
     }
 
-    // Dispid 1 on this interface, so it is the first vtable method.
-    [ComImport]
-    [Guid("678C0AA0-7D66-11D2-A67D-00105A42887F")]
-    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
-    internal interface ICapeThermoEquilibriumRoutine11
-    {
-        void CalcEquilibrium(
-            [MarshalAs(UnmanagedType.Struct)] object specification1,
-            [MarshalAs(UnmanagedType.Struct)] object specification2,
-            [MarshalAs(UnmanagedType.BStr)] string solutionType);
-    }
 }

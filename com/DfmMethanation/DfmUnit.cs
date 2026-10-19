@@ -622,10 +622,14 @@ namespace PhD.DfmMethanation
             ThermoBridge.TrySetOverall(mo, "temperature", temperature);
             ThermoBridge.TrySetOverall(mo, "pressure", pressure);
             ThermoBridge.EnsurePhases(mo);
-            if (!ThermoBridge.FlashEquilibrium(mo))
-                ThermoBridge.MarkVaporFlashed(mo, fraction, temperature, pressure);
+            // TEA's TP flash returns an error for an all-gas mixture. COFE then
+            // reports that the outlet cannot be flashed. Mark the vapor phase
+            // directly so COFE does not attempt that flash.
+            ThermoBridge.MarkVaporFlashed(mo, fraction, temperature, pressure);
             ThermoBridge.ClearError();
             ThermoBridge.LogPhases(mo, "after");
+            if (!ThermoBridge.PresentPhasesAtEquilibrium(mo))
+                CapeTrace.Write("!! outlet phases are not at equilibrium");
         }
 
         void WriteResultFile()
