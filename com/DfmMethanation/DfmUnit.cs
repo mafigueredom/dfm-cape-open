@@ -740,7 +740,7 @@ namespace PhD.DfmMethanation
 
         CapeParameter P(string name) => _p[name];
 
-        void AddP(string name, object value, CapeParamMode mode, string desc = null)
+        void AddP(string name, object value, CapeParamMode mode, string desc = null, double[] dimensionality = null)
         {
             CapeParameter p;
             if (value is bool b)
@@ -750,9 +750,15 @@ namespace PhD.DfmMethanation
             else if (value is string s)
                 p = new CapeOptionParameter(name, s, Array.Empty<string>(), false, mode, desc);
             else
-                p = new CapeRealParameter(name, Convert.ToDouble(value, CultureInfo.InvariantCulture), mode, desc);
+                p = new CapeRealParameter(name, Convert.ToDouble(value, CultureInfo.InvariantCulture), mode, desc, dimensionality);
             _p[name] = p;
             _params.Add(name, p);
+        }
+
+        // Exponents of m, kg, s, A, K, mol, cd, rad, and the absolute flag.
+        static double[] Dim(double length = 0, double mass = 0, double time = 0, double mole = 0)
+        {
+            return new[] { length, mass, time, 0.0, 0.0, mole, 0.0, 0.0, 0.0 };
         }
 
         void AddOption(string name, string value, string[] options, bool restricted, CapeParamMode mode, string desc = null)
@@ -782,39 +788,39 @@ namespace PhD.DfmMethanation
 
         void BuildParameters()
         {
-            AddP("L", 0.06, CapeParamMode.CAPE_INPUT, "Bed length [m]");
-            AddP("R", 0.00225, CapeParamMode.CAPE_INPUT, "Bed radius [m]; D=2R");
-            AddP("d_p", 0.0001525, CapeParamMode.CAPE_INPUT, "Particle diameter [m]");
+            AddP("L", 0.06, CapeParamMode.CAPE_INPUT, "Bed length [m]", Dim(length: 1));
+            AddP("R", 0.00225, CapeParamMode.CAPE_INPUT, "Bed radius [m]; D=2R", Dim(length: 1));
+            AddP("d_p", 0.0001525, CapeParamMode.CAPE_INPUT, "Particle diameter [m]", Dim(length: 1));
             AddP("epsilon", 0.3865222222, CapeParamMode.CAPE_INPUT, "Bed voidage (typed)");
-            AddP("rho_a", 576.3635799, CapeParamMode.CAPE_INPUT, "Apparent density [kg/m3_bed]");
-            AddP("k_ads", 3.3333333333333335, CapeParamMode.CAPE_INPUT, "LDF k_ads [1/s]");
-            AddP("k_des", 1.7e-6, CapeParamMode.CAPE_INPUT, "H2 desorption k [m3/(kg s)]");
-            AddP("q_e", 0.1681, CapeParamMode.CAPE_INPUT, "CSC q_e [mol/kg]");
+            AddP("rho_a", 576.3635799, CapeParamMode.CAPE_INPUT, "Apparent density [kg/m3_bed]", Dim(length: -3, mass: 1));
+            AddP("k_ads", 3.3333333333333335, CapeParamMode.CAPE_INPUT, "LDF k_ads [1/s]", Dim(time: -1));
+            AddP("k_des", 1.7e-6, CapeParamMode.CAPE_INPUT, "H2 desorption k [m3/(kg s)]", Dim(length: 3, mass: -1, time: -1));
+            AddP("q_e", 0.1681, CapeParamMode.CAPE_INPUT, "CSC q_e [mol/kg]", Dim(mass: -1, mole: 1));
             AddP("K_C", 245.7369, CapeParamMode.CAPE_INPUT, "CSC K_C (per atm)");
             AddP("K_R", 2.010374, CapeParamMode.CAPE_INPUT);
             AddP("a_csc", 1.33012, CapeParamMode.CAPE_INPUT);
             AddP("A_rxn", 16491.0, CapeParamMode.CAPE_INPUT);
-            AddP("Ea", 14560.0, CapeParamMode.CAPE_INPUT, "Ea [J/mol]");
+            AddP("Ea", 14560.0, CapeParamMode.CAPE_INPUT, "Ea [J/mol]", Dim(length: 2, mass: 1, time: -2, mole: -1));
             AddP("m1", 1.7, CapeParamMode.CAPE_INPUT);
             AddP("m2", 5.0, CapeParamMode.CAPE_INPUT);
             AddP("n_cycles", 1, CapeParamMode.CAPE_INPUT, "Number of cycles");
-            AddP("t_ads", 400.0, CapeParamMode.CAPE_INPUT, "Adsorption duration [s]");
-            AddP("t_purge", 180.0, CapeParamMode.CAPE_INPUT);
-            AddP("t_rxn", 300.0, CapeParamMode.CAPE_INPUT);
-            AddP("t_purge2", 0.0, CapeParamMode.CAPE_INPUT);
+            AddP("t_ads", 400.0, CapeParamMode.CAPE_INPUT, "Adsorption duration [s]", Dim(time: 1));
+            AddP("t_purge", 180.0, CapeParamMode.CAPE_INPUT, null, Dim(time: 1));
+            AddP("t_rxn", 300.0, CapeParamMode.CAPE_INPUT, null, Dim(time: 1));
+            AddP("t_purge2", 0.0, CapeParamMode.CAPE_INPUT, null, Dim(time: 1));
             AddOption("C_t_export", "both", new[] { "raw", "sopdt", "both" }, true, CapeParamMode.CAPE_INPUT,
                 "Report series: raw, sopdt, or both");
             AddP("balance_tol", 0.001, CapeParamMode.CAPE_INPUT);
             AddP("fail_if_unbalanced", false, CapeParamMode.CAPE_INPUT);
             AddOption("docker_image", "dfm-methanation-cape:v1", Array.Empty<string>(), false,
                 CapeParamMode.CAPE_INPUT, "Docker engine image");
-            AddP("t_end_override", 0.0, CapeParamMode.CAPE_INPUT, "0 = full horizon; >0 passed as --t-end");
+            AddP("t_end_override", 0.0, CapeParamMode.CAPE_INPUT, "0 = full horizon; >0 passed as --t-end", Dim(time: 1));
             AddP("R_C_rel", 0.0, CapeParamMode.CAPE_OUTPUT);
             AddP("R_H_rel", 0.0, CapeParamMode.CAPE_OUTPUT);
             AddP("R_O_rel", 0.0, CapeParamMode.CAPE_OUTPUT);
             AddP("Y_CH4", 0.0, CapeParamMode.CAPE_OUTPUT);
-            AddP("n_CH4", 0.0, CapeParamMode.CAPE_OUTPUT);
-            AddP("N_CO2_ads", 0.0, CapeParamMode.CAPE_OUTPUT);
+            AddP("n_CH4", 0.0, CapeParamMode.CAPE_OUTPUT, "Methane flow [mol/s]", Dim(time: -1, mole: 1));
+            AddP("N_CO2_ads", 0.0, CapeParamMode.CAPE_OUTPUT, "Adsorbed CO2 [mol]", Dim(mole: 1));
             AddP("balance_ok", false, CapeParamMode.CAPE_OUTPUT);
         }
 

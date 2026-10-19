@@ -184,8 +184,9 @@ namespace PhD.DfmMethanation
     {
         object _value;
         readonly object _default;
+        readonly double[] _dimensions;
 
-        protected CapeParameter(string name, object value, CapeParamMode mode, string desc)
+        protected CapeParameter(string name, object value, CapeParamMode mode, string desc, double[] dimensionality = null)
         {
             ComponentName = name;
             ComponentDescription = string.IsNullOrEmpty(desc) ? name : desc;
@@ -193,6 +194,9 @@ namespace PhD.DfmMethanation
             _value = value;
             Mode = mode;
             ValStatus = CapeValidationStatus.CAPE_VALID;
+            _dimensions = new double[9];
+            if (dimensionality != null)
+                Array.Copy(dimensionality, _dimensions, Math.Min(9, dimensionality.Length));
         }
 
         public string ComponentName { get; set; }
@@ -208,14 +212,17 @@ namespace PhD.DfmMethanation
                 return this;
             }
         }
-        // COFE indexes this array while drawing the parameter dialog. An empty
-        // vector is an access violation. Nine zeros means dimensionless.
+        // COFE indexes nine exponents: m, kg, s, A, K, mol, cd, rad, absolute flag.
+        // Nine zeros is dimensionless, and COFE and Aspen omit those from the
+        // parametric-study and optimization lists. The stored value stays in SI.
         public object Dimensionality
         {
             get
             {
                 CapeTrace.Write("Dimensionality " + ComponentName);
-                return new double[9];
+                var copy = new double[9];
+                Array.Copy(_dimensions, copy, 9);
+                return copy;
             }
         }
 
@@ -267,8 +274,8 @@ namespace PhD.DfmMethanation
     [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A003")]
     public class CapeRealParameter : CapeParameter, ICapeParameter, ICapeParameterSpec, ICapeRealParameterSpec
     {
-        public CapeRealParameter(string name, double value, CapeParamMode mode, string desc = null)
-            : base(name, value, mode, desc)
+        public CapeRealParameter(string name, double value, CapeParamMode mode, string desc = null, double[] dimensionality = null)
+            : base(name, value, mode, desc, dimensionality)
         {
         }
 
