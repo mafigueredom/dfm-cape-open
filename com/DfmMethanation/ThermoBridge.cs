@@ -555,7 +555,33 @@ namespace PhD.DfmMethanation
 
         static readonly Guid IidEquilibrium = new Guid("678C0AA0-7D66-11D2-A67D-00105A42887F");
 
-        public static bool FlashVapor(object mo, string vaporPhase)
+        public static void SetVaporState(
+            object mo, string vapor, double[] fraction, double temperature, double pressure)
+        {
+            object raw = null;
+            try
+            {
+                raw = AsInterface(mo, IidMaterial, typeof(ICapeThermoMaterial11));
+                var mat = (ICapeThermoMaterial11)raw;
+                TryPhaseProp(mat, "fraction", vapor, "Mole", fraction);
+                TryPhaseProp(mat, "fraction", vapor, "mole", fraction);
+                TryPhaseProp(mat, "phaseFraction", vapor, "Mole", new[] { 1.0 });
+                TryPhaseProp(mat, "phaseFraction", vapor, "mole", new[] { 1.0 });
+                TryPhaseProp(mat, "temperature", vapor, "", new[] { temperature });
+                TryPhaseProp(mat, "pressure", vapor, "", new[] { pressure });
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("SetVaporState " + ex.GetBaseException().Message);
+            }
+            finally
+            {
+                ReleaseRcw(raw);
+            }
+        }
+
+        public static bool FlashVapor(object mo)
         {
             object raw = null;
             try
@@ -571,22 +597,40 @@ namespace PhD.DfmMethanation
             try
             {
                 var routine = (ICapeThermoEquilibriumRoutine11)raw;
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var solution in new[] { vaporPhase, "Vapor", "Vapour" })
+                // solutionType "Vapor" is not a CAPE-OPEN solution type. For a
+                // TP flash it must be Unspecified, and only the vapor phase
+                // may be present or TEA reports a trivial two-phase solution.
+                var attempts = new[]
                 {
-                    if (string.IsNullOrWhiteSpace(solution) || !seen.Add(solution))
-                        continue;
+                    new[] { "temperature", "pressure", "Unspecified" },
+                    new[] { "pressure", "temperature", "Unspecified" },
+                    new[] { "temperature", "pressure", "Normal" },
+                    new[] { "pressure", "phaseFraction", "Unspecified" },
+                    new[] { "pressure", "phaseFraction", "Normal" }
+                };
+                foreach (var attempt in attempts)
+                {
                     try
                     {
-                        routine.CalcEquilibrium("temperature", "pressure", solution);
-                        CapeTrace.Write("CalcEquilibrium temperature pressure " + solution + " ok");
-                        return true;
+                        routine.CalcEquilibrium(attempt[0], attempt[1], attempt[2]);
+                        CapeTrace.Write(
+                            "CalcEquilibrium " + attempt[0] + " " + attempt[1]
+                            + " " + attempt[2] + " ok");
+                        if (PresentPhasesAtEquilibrium(mo))
+                            return true;
+                        CapeTrace.Write("CalcEquilibrium ok but phases not at equilibrium");
                     }
                     catch (Exception ex)
                     {
                         ClearError();
                         CapeTrace.Write(
-                            "CalcEquilibrium " + solution + " " + ex.GetBaseException().Message);
+                            "CalcEquilibrium " + attempt[0] + " " + attempt[1] + " "
+                            + attempt[2] + " " + ex.GetBaseException().Message);
+                        if (PresentPhasesAtEquilibrium(mo))
+                        {
+                            CapeTrace.Write("CalcEquilibrium failed but phases are at equilibrium");
+                            return true;
+                        }
                     }
                 }
                 return false;

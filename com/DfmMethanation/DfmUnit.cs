@@ -670,9 +670,11 @@ namespace PhD.DfmMethanation
             var vapor = ThermoBridge.VaporPhaseName(mo);
             ThermoBridge.EnsurePhases(mo);
             ThermoBridge.KeepOnlyPhase(mo, vapor);
-            // An unrestricted TP flash fails for this all-gas mixture. Asking
-            // TEA for the vapor solution is what sets the phase to equilibrium.
-            if (!ThermoBridge.FlashVapor(mo, vapor) || !ThermoBridge.PresentPhasesAtEquilibrium(mo))
+            ThermoBridge.SetVaporState(mo, vapor, fraction, temperature, pressure);
+            // Both phases present makes TEA reject this all-gas mixture as a
+            // trivial VLE. With only vapor present, a normal TP flash can
+            // mark that phase at equilibrium.
+            if (!ThermoBridge.FlashVapor(mo) || !ThermoBridge.PresentPhasesAtEquilibrium(mo))
                 ThermoBridge.MarkVaporFlashed(mo, fraction, temperature, pressure);
             ThermoBridge.ClearError();
             ThermoBridge.LogPhases(mo, "after");
