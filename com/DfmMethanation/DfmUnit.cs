@@ -671,11 +671,16 @@ namespace PhD.DfmMethanation
             ThermoBridge.EnsurePhases(mo);
             ThermoBridge.KeepOnlyPhase(mo, vapor);
             ThermoBridge.LogPhases(mo, "vapor-only");
+            // UNDEFINED failed before any phase existed. Set temperature,
+            // pressure, and composition again once only vapor is present,
+            // which is the state CalcEquilibrium reads.
+            ThermoBridge.TrySetOverall(mo, "fraction", fraction, "mole");
+            ThermoBridge.TrySetOverall(mo, "flow", flow, "mole");
+            ThermoBridge.TrySetOverall(mo, "temperature", temperature);
+            ThermoBridge.TrySetOverall(mo, "pressure", pressure);
             ThermoBridge.SetVaporState(mo, vapor, fraction, temperature, pressure);
             ThermoBridge.TrySetOverall(mo, "phaseFraction", new[] { 1.0 }, "mole");
-            // Both phases present makes TEA reject this all-gas mixture as a
-            // trivial VLE. With only vapor present, a normal TP flash can
-            // mark that phase at equilibrium.
+            ThermoBridge.ProbeOverall(mo);
             if (!ThermoBridge.FlashVapor(mo) || !ThermoBridge.PresentPhasesAtEquilibrium(mo))
                 ThermoBridge.MarkVaporFlashed(mo, fraction, temperature, pressure);
             ThermoBridge.ClearError();
