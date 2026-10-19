@@ -15,6 +15,7 @@ namespace PhD.DfmMethanation
         static readonly Guid IidMaterial = new Guid("678C0A9B-7D66-11D2-A67D-00105A42887F");
         static readonly Guid IidCompounds = new Guid("678C0A9D-7D66-11D2-A67D-00105A42887F");
         static readonly Guid IidMaterial10 = new Guid("678C0994-7D66-11D2-A67D-00105A42887F");
+        static readonly Guid IidMaterialContext = new Guid("678C0A9C-7D66-11D2-A67D-00105A42887F");
 
         public static double[] ToDoubles(object raw)
         {
@@ -617,53 +618,87 @@ namespace PhD.DfmMethanation
                 CapeTrace.Write("Flash no equilibrium " + ex.GetBaseException().Message);
                 return false;
             }
+            var bound = false;
             try
             {
                 var routine = (ICapeThermoEquilibriumRoutine11)raw;
-                // SetMaterial on this object closed COCO with no log line
-                // after the property probe. The stream already carries the
-                // equilibrium routine, so call CalcEquilibrium on it directly.
-                // Temperature and pressure are readable only with an empty
-                // basis; the word UNDEFINED is rejected by TEA.
-                if (TrySpecPairs(routine, mo))
+                // A specification is property, basis, and phase. One property
+                // name is not enough, and TEA reads temperature with an empty
+                // basis. 678C0A9C is ICapeThermoMaterialContext; the earlier
+                // 678C0A9F call was a different interface and closed COCO.
+                bound = BindMaterial(raw, mo);
+                if (TryEquilibrium(
+                        routine, mo,
+                        new[] { "temperature", "", "Overall" },
+                        new[] { "pressure", "", "Overall" },
+                        "Unspecified",
+                        "TP empty Overall"))
                     return true;
                 if (TryEquilibrium(
                         routine, mo,
-                        new[] { "temperature", "" },
-                        new[] { "pressure", "" },
+                        new[] { "temperature", "UNDEFINED", "Overall" },
+                        new[] { "pressure", "UNDEFINED", "Overall" },
                         "Unspecified",
-                        "TP basis empty"))
+                        "TP UNDEFINED Overall"))
+                    return true;
+                if (TryEquilibrium(
+                        routine, mo,
+                        new[] { "temperature", "", "Vapor" },
+                        new[] { "pressure", "", "Vapor" },
+                        "Unspecified",
+                        "TP empty Vapor"))
                     return true;
                 return false;
             }
             finally
             {
+                if (bound)
+                    UnbindMaterial(raw);
                 ReleaseRcw(raw);
             }
         }
 
-        static bool TrySpecPairs(ICapeThermoEquilibriumRoutine11 routine, object mo)
+        static bool BindMaterial(object routine, object mo)
         {
-            var specs = new[]
+            object ctx = null;
+            try
             {
-                new[] { "temperature", "pressure", "Unspecified" },
-                new[] { "pressure", "phaseFraction", "Unspecified" },
-                new[] { "pressure", "phaseFraction", "Normal" }
-            };
-            foreach (var spec in specs)
-            {
-                var tag = spec[0] + " " + spec[1] + " " + spec[2];
-                if (TryEquilibrium(routine, mo, new[] { spec[0] }, new[] { spec[1] }, spec[2], tag + " lb=0"))
-                    return true;
-                if (TryEquilibrium(
-                        routine, mo,
-                        OneBasedStrings(new[] { spec[0] }),
-                        OneBasedStrings(new[] { spec[1] }),
-                        spec[2],
-                        tag + " lb=1"))
-                    return true;
+                ctx = AsInterface(routine, IidMaterialContext, typeof(ICapeThermoMaterialContext));
+                CapeTrace.Write("SetMaterial call");
+                ((ICapeThermoMaterialContext)ctx).SetMaterial(mo);
+                CapeTrace.Write("SetMaterial ok");
+                return true;
             }
-            return false;
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("SetMaterial " + ErrorText(ex));
+                return false;
+            }
+            finally
+            {
+                ReleaseRcw(ctx);
+            }
+        }
+
+        static void UnbindMaterial(object routine)
+        {
+            object ctx = null;
+            try
+            {
+                ctx = AsInterface(routine, IidMaterialContext, typeof(ICapeThermoMaterialContext));
+                ((ICapeThermoMaterialContext)ctx).UnsetMaterial();
+                CapeTrace.Write("UnsetMaterial ok");
+            }
+            catch (Exception ex)
+            {
+                ClearError();
+                CapeTrace.Write("UnsetMaterial " + ErrorText(ex));
+            }
+            finally
+            {
+                ReleaseRcw(ctx);
+            }
         }
 
         public static void ProbeOverall(object mo)
@@ -963,6 +998,16 @@ namespace PhD.DfmMethanation
             [MarshalAs(UnmanagedType.Struct)] object specification1,
             [MarshalAs(UnmanagedType.Struct)] object specification2,
             [MarshalAs(UnmanagedType.BStr)] string solutionType);
+    }
+
+    // SetMaterial is dispid 1. GUID 678C0A9C, not 678C0A9F.
+    [ComImport]
+    [Guid("678C0A9C-7D66-11D2-A67D-00105A42887F")]
+    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    internal interface ICapeThermoMaterialContext
+    {
+        void SetMaterial([MarshalAs(UnmanagedType.IDispatch)] object material);
+        void UnsetMaterial();
     }
 
 }
