@@ -272,11 +272,16 @@ namespace PhD.DfmMethanation
     [ComVisible(true)]
     [ClassInterface(ClassInterfaceType.None)]
     [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A003")]
-    public class CapeRealParameter : CapeParameter, ICapeParameter, ICapeParameterSpec, ICapeRealParameterSpec
+    public class CapeRealParameter : CapeParameter, ICapeIdentification, ICapeParameter, ICapeParameterSpec, ICapeRealParameterSpec
     {
-        public CapeRealParameter(string name, double value, CapeParamMode mode, string desc = null, double[] dimensionality = null)
+        readonly double _lower;
+        readonly double _upper;
+
+        public CapeRealParameter(string name, double value, CapeParamMode mode, string desc = null, double[] dimensionality = null, double lower = double.NaN, double upper = double.NaN)
             : base(name, value, mode, desc, dimensionality)
         {
+            _lower = lower;
+            _upper = upper;
         }
 
         public CapeParamType Type
@@ -289,11 +294,11 @@ namespace PhD.DfmMethanation
         }
         public double LowerBound
         {
-            get { CapeTrace.Write("LowerBound " + ComponentName); return -1e30; }
+            get { CapeTrace.Write("LowerBound " + ComponentName); return _lower; }
         }
         public double UpperBound
         {
-            get { CapeTrace.Write("UpperBound " + ComponentName); return 1e30; }
+            get { CapeTrace.Write("UpperBound " + ComponentName); return _upper; }
         }
 
         public bool Validate(double value, ref string message)
