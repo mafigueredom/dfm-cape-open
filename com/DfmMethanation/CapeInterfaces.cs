@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
 
 namespace PhD.DfmMethanation
 {
@@ -187,8 +186,11 @@ namespace PhD.DfmMethanation
         void GetClassID(out Guid classId);
         [PreserveSig]
         int IsDirty();
-        void Load(IStream stream);
-        void Save(IStream stream, [MarshalAs(UnmanagedType.Bool)] bool clearDirty);
+        // IntPtr keeps the IStream* slot without exporting ComTypes.IStream.
+        // tlbexp has no type library for that interface and regasm /tlb then
+        // fails with TYPE_E_REGISTRYACCESS.
+        void Load(IntPtr stream);
+        void Save(IntPtr stream, [MarshalAs(UnmanagedType.Bool)] bool clearDirty);
         void GetSizeMax(out ulong size);
     }
 
@@ -200,8 +202,8 @@ namespace PhD.DfmMethanation
         void GetClassID(out Guid classId);
         [PreserveSig]
         int IsDirty();
-        void Load(IStream stream);
-        void Save(IStream stream, [MarshalAs(UnmanagedType.Bool)] bool clearDirty);
+        void Load(IntPtr stream);
+        void Save(IntPtr stream, [MarshalAs(UnmanagedType.Bool)] bool clearDirty);
         void GetSizeMax(out ulong size);
         void InitNew();
     }

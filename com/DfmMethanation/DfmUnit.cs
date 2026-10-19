@@ -164,38 +164,84 @@ namespace PhD.DfmMethanation
             CapeTrace.Write("Persist GetSizeMax " + size);
         }
 
-        public void Save(IStream stream, bool clearDirty)
+        public void Save(IntPtr stream, bool clearDirty)
         {
             var bytes = ParameterState();
             CapeTrace.Write("Persist Save n=" + bytes.Length);
-            stream.Write(bytes, bytes.Length, IntPtr.Zero);
+            using (var s = OpenStream(stream))
+                s.Write(bytes, bytes.Length, IntPtr.Zero);
         }
 
-        public void Load(IStream stream)
+        public void Load(IntPtr stream)
         {
             var lenBuf = new byte[4];
-            stream.Read(lenBuf, 4, IntPtr.Zero);
-            int len = lenBuf[0] | (lenBuf[1] << 8) | (lenBuf[2] << 16) | (lenBuf[3] << 24);
-            if (len < 0 || len > 1000000)
+            using (var s = OpenStream(stream))
             {
-                CapeTrace.Write("Persist Load bad " + len);
-                return;
+                s.Read(lenBuf, 4, IntPtr.Zero);
+                int len = lenBuf[0] | (lenBuf[1] << 8) | (lenBuf[2] << 16) | (lenBuf[3] << 24);
+                if (len < 0 || len > 1000000)
+                {
+                    CapeTrace.Write("Persist Load bad " + len);
+                    return;
+                }
+                var body = new byte[len];
+                if (len > 0)
+                    s.Read(body, len, IntPtr.Zero);
+                var json = Encoding.UTF8.GetString(body);
+                CapeTrace.Write("Persist Load n=" + len);
+                var map = _json.Deserialize<Dictionary<string, object>>(json);
+                if (map == null)
+                    return;
+                foreach (var kv in map)
+                {
+                    if (!_p.TryGetValue(kv.Key, out var parameter))
+                        continue;
+                    if (parameter.Mode == CapeParamMode.CAPE_OUTPUT)
+                        continue;
+                    parameter.value = kv.Value;
+                }
             }
-            var body = new byte[len];
-            if (len > 0)
-                stream.Read(body, len, IntPtr.Zero);
-            var json = Encoding.UTF8.GetString(body);
-            CapeTrace.Write("Persist Load n=" + len);
-            var map = _json.Deserialize<Dictionary<string, object>>(json);
-            if (map == null)
-                return;
-            foreach (var kv in map)
+        }
+
+        static StreamLease OpenStream(IntPtr stream)
+        {
+            if (stream == IntPtr.Zero)
+                throw new InvalidOperationException("null IStream");
+            var rcw = Marshal.GetObjectForIUnknown(stream);
+            return new StreamLease((IStream)rcw, rcw);
+        }
+
+        sealed class StreamLease : IDisposable
+        {
+            readonly IStream _stream;
+            readonly object _rcw;
+
+            public StreamLease(IStream stream, object rcw)
             {
-                if (!_p.TryGetValue(kv.Key, out var parameter))
-                    continue;
-                if (parameter.Mode == CapeParamMode.CAPE_OUTPUT)
-                    continue;
-                parameter.value = kv.Value;
+                _stream = stream;
+                _rcw = rcw;
+            }
+
+            public void Read(byte[] buffer, int count, IntPtr read)
+            {
+                _stream.Read(buffer, count, read);
+            }
+
+            public void Write(byte[] buffer, int count, IntPtr written)
+            {
+                _stream.Write(buffer, count, written);
+            }
+
+            public void Dispose()
+            {
+                try
+                {
+                    if (_rcw != null && Marshal.IsComObject(_rcw))
+                        Marshal.ReleaseComObject(_rcw);
+                }
+                catch
+                {
+                }
             }
         }
 
@@ -415,14 +461,7 @@ namespace PhD.DfmMethanation
                     throw new InvalidOperationException(port.ComponentName + " is not connected");
                 return null;
             }
-            try
-            {
-                return ReadFeed(mo, port.ComponentName);
-            }
-            finally
-            {
-                ThermoBridge.ReleaseRcw(mo);
-            }
+            return ReadFeed(mo, port.ComponentName);
         }
 
         Dictionary<string, object> ReadFeed(object mo, string portName)
@@ -528,10 +567,6 @@ namespace PhD.DfmMethanation
                 ThermoBridge.ClearError();
                 CapeTrace.Write("!! WriteProduct " + ex.GetBaseException().Message);
             }
-            finally
-            {
-                ThermoBridge.ReleaseRcw(mo);
-            }
         }
 
         void WriteSolidCo2()
@@ -578,10 +613,6 @@ namespace PhD.DfmMethanation
             {
                 ThermoBridge.ClearError();
                 CapeTrace.Write("!! WriteSolidCo2 " + ex.GetBaseException().Message);
-            }
-            finally
-            {
-                ThermoBridge.ReleaseRcw(mo);
             }
         }
 

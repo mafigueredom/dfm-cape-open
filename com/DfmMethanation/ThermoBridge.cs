@@ -181,6 +181,29 @@ namespace PhD.DfmMethanation
             catch { }
         }
 
+        public static IntPtr QueryMaterialInterface(object comObject)
+        {
+            if (comObject == null)
+                return IntPtr.Zero;
+            IntPtr unk = Marshal.GetIUnknownForObject(comObject);
+            IntPtr thermo = QueryInterface(unk, IidMaterial);
+            if (thermo == IntPtr.Zero)
+                thermo = QueryInterface(unk, IidMaterial10);
+            if (thermo != IntPtr.Zero)
+            {
+                Marshal.Release(unk);
+                return thermo;
+            }
+            return unk;
+        }
+
+        static IntPtr QueryInterface(IntPtr unk, Guid iid)
+        {
+            Guid g = iid;
+            int hr = Marshal.QueryInterface(unk, ref g, out IntPtr p);
+            return hr < 0 ? IntPtr.Zero : p;
+        }
+
         public static void ReleaseRcw(object comObject)
         {
             try

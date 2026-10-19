@@ -43,10 +43,7 @@ namespace PhD.DfmMethanation
         [Guid("B3E1C0A4-9F2D-4A77-8C11-0DF100C0A002")]
     public class CapePort : ICapeUnitPort, ICapeIdentification
     {
-        static readonly Guid IidIDispatch = new Guid("00020400-0000-0000-C000-000000000046");
-        static readonly Guid IidThermo11 = new Guid("678C0A9B-7D66-11D2-A67D-00105A42887F");
-        static readonly Guid IidThermo10 = new Guid("678C0994-7D66-11D2-A67D-00105A42887F");
-        IntPtr _material;
+        object _connected;
         string _name;
         string _description;
 
@@ -97,21 +94,20 @@ namespace PhD.DfmMethanation
             }
         }
 
-        public bool IsConnected => _material != IntPtr.Zero;
+        public bool IsConnected => _connected != null;
 
-        public object MaterialObject =>
-            _material == IntPtr.Zero ? null : Marshal.GetObjectForIUnknown(_material);
+        public object MaterialObject => _connected;
 
         public int get_connectedObject(out IntPtr connectedObject)
         {
-            if (_material == IntPtr.Zero)
+            if (_connected == null)
             {
                 connectedObject = IntPtr.Zero;
                 CapeTrace.Write("connectedObject " + _name + " null");
                 return 0;
             }
-            Marshal.AddRef(_material);
-            connectedObject = _material;
+            // One AddRef for the caller. COFE releases that pointer itself.
+            connectedObject = ThermoBridge.QueryMaterialInterface(_connected);
             CapeTrace.Write("connectedObject " + _name + " return ptr");
             return 0;
         }
@@ -122,30 +118,10 @@ namespace PhD.DfmMethanation
             ReleaseMaterial();
             if (objectToConnect == null)
                 return;
-            IntPtr unk = Marshal.GetIUnknownForObject(objectToConnect);
-            try
-            {
-                string which;
-                _material = Query(unk, IidThermo11);
-                if (_material != IntPtr.Zero)
-                    which = "thermo11";
-                else
-                {
-                    _material = Query(unk, IidThermo10);
-                    if (_material != IntPtr.Zero)
-                        which = "thermo10";
-                    else
-                    {
-                        _material = Query(unk, IidIDispatch);
-                        which = _material == IntPtr.Zero ? "none" : "dispatch";
-                    }
-                }
-                CapeTrace.Write("Connect " + _name + " stored " + which);
-            }
-            finally
-            {
-                Marshal.Release(unk);
-            }
+            // Keep the single RCW COFE passed in. A second QueryInterface
+            // held until process exit is what COFE reports as reference count 2.
+            _connected = objectToConnect;
+            CapeTrace.Write("Connect " + _name + " stored");
         }
 
         public void Disconnect()
@@ -155,20 +131,21 @@ namespace PhD.DfmMethanation
             CapeTrace.Write("Disconnect " + _name + " released");
         }
 
-        static IntPtr Query(IntPtr unk, Guid iid)
-        {
-            Guid g = iid;
-            IntPtr p;
-            int hr = Marshal.QueryInterface(unk, ref g, out p);
-            return hr < 0 ? IntPtr.Zero : p;
-        }
-
         void ReleaseMaterial()
         {
-            if (_material == IntPtr.Zero)
+            var connected = _connected;
+            _connected = null;
+            if (connected == null)
                 return;
-            Marshal.Release(_material);
-            _material = IntPtr.Zero;
+            try
+            {
+                if (Marshal.IsComObject(connected))
+                    Marshal.ReleaseComObject(connected);
+            }
+            catch (Exception ex)
+            {
+                CapeTrace.Write("release " + _name + " " + ex.GetBaseException().Message);
+            }
         }
     }
 
