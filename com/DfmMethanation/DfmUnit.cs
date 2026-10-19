@@ -39,7 +39,7 @@ namespace PhD.DfmMethanation
         readonly CapeCollection _params = new CapeCollection();
         readonly Dictionary<string, CapeParameter> _p = new Dictionary<string, CapeParameter>(StringComparer.OrdinalIgnoreCase);
         readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 256 };
-        CapePort _feedAds, _feedPurge, _feedRxn, _feedPurge2, _product;
+        CapePort _feedAds, _feedPurge, _feedRxn, _feedPurge2, _product, _co2Solid;
         Dictionary<string, object> _lastResult;
         static Dictionary<string, object> _sharedResult;
         string _selectedReport = "atom_balance";
@@ -260,6 +260,13 @@ namespace PhD.DfmMethanation
                     CapeTrace.Write("<< Validate invalid product");
                     return false;
                 }
+                if (!_co2Solid.IsConnected)
+                {
+                    message = "CO2_solid must be connected. It carries the CO2 left on the catalyst.";
+                    _val = CapeValidationStatus.CAPE_INVALID;
+                    CapeTrace.Write("<< Validate invalid CO2_solid");
+                    return false;
+                }
                 var t2 = P("t_purge2").AsDouble();
                 if (t2 > 0.0 && !_feedPurge2.IsConnected)
                 {
@@ -310,6 +317,7 @@ namespace PhD.DfmMethanation
                     WriteResultFile();
                     ApplyOutputs();
                     WriteProduct();
+                    WriteSolidCo2();
                     _val = CapeValidationStatus.CAPE_VALID;
                     CapeTrace.Write("<< Calculate");
                 }
@@ -507,22 +515,9 @@ namespace PhD.DfmMethanation
                 var fraction = new double[cas.Length];
                 for (int i = 0; i < cas.Length; i++)
                     fraction[i] = flow[i] / total;
-                double t = ToD(product, "T_K");
-                double p = ToD(product, "P_Pa");
-                if (!(t > 0.0))
-                    t = 593.15;
-                if (!(p > 0.0))
-                    p = 101325.0;
-                ThermoBridge.LogPhases(mo, "before");
-                ThermoBridge.TrySetOverall(mo, "fraction", fraction, "mole");
-                ThermoBridge.TrySetOverall(mo, "flow", flow, "mole");
-                ThermoBridge.TrySetOverall(mo, "temperature", t);
-                ThermoBridge.TrySetOverall(mo, "pressure", p);
-                ThermoBridge.EnsurePhases(mo);
-                if (!ThermoBridge.FlashEquilibrium(mo))
-                    ThermoBridge.MarkVaporFlashed(mo, fraction, t, p);
-                ThermoBridge.ClearError();
-                ThermoBridge.LogPhases(mo, "after");
+                double t, p;
+                BedTP(out t, out p);
+                WriteVapor(mo, fraction, flow, t, p);
                 CapeTrace.Write(
                     "<< WriteProduct F_mol_s=" + total.ToString("G6", CultureInfo.InvariantCulture)
                     + " T=" + t.ToString(CultureInfo.InvariantCulture)
@@ -539,6 +534,100 @@ namespace PhD.DfmMethanation
             }
         }
 
+        void WriteSolidCo2()
+        {
+            // Aspen balances only the ports on this block. The CO2 still on the
+            // catalyst is inventory, so it leaves here as pure CO2 and stays out of Product.
+            CapeTrace.Write(">> WriteSolidCo2");
+            var mo = _co2Solid.MaterialObject;
+            if (mo == null)
+            {
+                CapeTrace.Write("WriteSolidCo2 no port");
+                return;
+            }
+            try
+            {
+                var rate = SolidCo2Rate();
+                var cas = ThermoBridge.GetCasNumbers(mo);
+                var flow = new double[cas.Length];
+                var fraction = new double[cas.Length];
+                var found = false;
+                for (int i = 0; i < cas.Length; i++)
+                {
+                    if (!string.Equals(cas[i], "124-38-9", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    flow[i] = rate;
+                    fraction[i] = 1.0;
+                    found = true;
+                    break;
+                }
+                if (!found)
+                {
+                    CapeTrace.Write("WriteSolidCo2 no CO2 CAS");
+                    return;
+                }
+                double t, p;
+                BedTP(out t, out p);
+                WriteVapor(mo, fraction, flow, t, p);
+                CapeTrace.Write(
+                    "<< WriteSolidCo2 F_mol_s=" + rate.ToString("G6", CultureInfo.InvariantCulture)
+                    + " T=" + t.ToString(CultureInfo.InvariantCulture)
+                    + " P=" + p.ToString(CultureInfo.InvariantCulture));
+            }
+            catch (Exception ex)
+            {
+                ThermoBridge.ClearError();
+                CapeTrace.Write("!! WriteSolidCo2 " + ex.GetBaseException().Message);
+            }
+            finally
+            {
+                ThermoBridge.ReleaseRcw(mo);
+            }
+        }
+
+        double SolidCo2Rate()
+        {
+            var outputs = Dict(_lastResult, "outputs");
+            var accumulated = ToD(outputs, "N_CO2_ads") - ToD(outputs, "N_CO2_ads_0");
+            if (accumulated < 0.0)
+                accumulated = 0.0;
+            var horizon = ToD(_lastResult, "t_horizon_s");
+            if (!(horizon > 0.0))
+            {
+                horizon = (P("t_ads").AsDouble() + P("t_purge").AsDouble()
+                    + P("t_rxn").AsDouble() + P("t_purge2").AsDouble())
+                    * Math.Max(1, P("n_cycles").AsInt());
+            }
+            if (!(horizon > 0.0))
+                return 0.0;
+            return accumulated / horizon;
+        }
+
+        void BedTP(out double temperature, out double pressure)
+        {
+            var product = Dict(_lastResult, "product");
+            temperature = ToD(product, "T_K");
+            pressure = ToD(product, "P_Pa");
+            if (!(temperature > 0.0))
+                temperature = 593.15;
+            if (!(pressure > 0.0))
+                pressure = 101325.0;
+        }
+
+        static void WriteVapor(object mo, double[] fraction, double[] flow, double temperature, double pressure)
+        {
+            ThermoBridge.LogPhases(mo, "before");
+            ThermoBridge.TrySetOverall(mo, "fraction", fraction, "mole");
+            ThermoBridge.TrySetOverall(mo, "flow", flow, "mole");
+            ThermoBridge.TrySetOverall(mo, "temperature", temperature);
+            ThermoBridge.TrySetOverall(mo, "pressure", pressure);
+            ThermoBridge.EnsurePhases(mo);
+            if (!ThermoBridge.FlashEquilibrium(mo))
+                ThermoBridge.MarkVaporFlashed(mo, fraction, temperature, pressure);
+            ThermoBridge.ClearError();
+            ThermoBridge.LogPhases(mo, "after");
+        }
+
         void WriteResultFile()
         {
             var path = Path.Combine(Path.GetTempPath(), "dfm-cape-open-last.txt");
@@ -551,6 +640,7 @@ namespace PhD.DfmMethanation
             text.AppendLine("P_Pa=" + ToD(product, "P_Pa").ToString(CultureInfo.InvariantCulture));
             foreach (var sp in Species)
                 text.AppendLine(sp + "_mol_s=" + ToD(fss, sp).ToString("G6", CultureInfo.InvariantCulture));
+            text.AppendLine("CO2_solid_mol_s=" + SolidCo2Rate().ToString("G6", CultureInfo.InvariantCulture));
             foreach (var name in new[] { "R_C_rel", "R_H_rel", "R_O_rel", "Y_CH4", "n_CH4", "N_CO2_ads", "balance_ok" })
             {
                 if (outputs.ContainsKey(name) && outputs[name] != null)
@@ -618,11 +708,15 @@ namespace PhD.DfmMethanation
             _feedRxn = new CapePort("Feed_rxn", CapePortDirection.CAPE_INLET);
             _feedPurge2 = new CapePort("Feed_purge2", CapePortDirection.CAPE_INLET);
             _product = new CapePort("Product", CapePortDirection.CAPE_OUTLET);
+            _co2Solid = new CapePort("CO2_solid", CapePortDirection.CAPE_OUTLET);
+            _co2Solid.ComponentDescription =
+                "CO2 left on the catalyst at the end of the run, as a pure-CO2 stream.";
             _ports.Add("Feed_ads", _feedAds);
             _ports.Add("Feed_purge", _feedPurge);
             _ports.Add("Feed_rxn", _feedRxn);
             _ports.Add("Feed_purge2", _feedPurge2);
             _ports.Add("Product", _product);
+            _ports.Add("CO2_solid", _co2Solid);
         }
 
         void BuildParameters()

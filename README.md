@@ -24,7 +24,7 @@ com\install.bat
 
 Restart Aspen Plus. Place **DFM Methanation Reactor** from the CAPE-OPEN / user-model palette.
 
-Connect `Feed_ads`, `Feed_purge`, `Feed_rxn`, and `Product`. Connect `Feed_purge2` only if `t_purge2` is greater than 0. The property package must include CO2 `124-38-9`, H2 `1333-74-0`, CH4 `74-82-8`, H2O `7732-18-5`, and N2 `7727-37-9`.
+Connect `Feed_ads`, `Feed_purge`, `Feed_rxn`, `Product`, and `CO2_solid`. Connect `Feed_purge2` only if `t_purge2` is greater than 0. `CO2_solid` is pure CO2 at the bed temperature and pressure; its flow is the CO2 still on the catalyst at the end of the run, divided by the run time. Keep it separate from `Product`. The property package must include CO2 `124-38-9`, H2 `1333-74-0`, CH4 `74-82-8`, H2O `7732-18-5`, and N2 `7727-37-9`.
 
 `Calculate()` runs `docker` in the same Windows session, so Docker Desktop has to be running. The first build pulls `dolfinx/dolfinx:v0.10.0-r1`.
 
