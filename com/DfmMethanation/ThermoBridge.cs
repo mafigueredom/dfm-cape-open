@@ -15,8 +15,6 @@ namespace PhD.DfmMethanation
         static readonly Guid IidMaterial = new Guid("678C0A9B-7D66-11D2-A67D-00105A42887F");
         static readonly Guid IidCompounds = new Guid("678C0A9D-7D66-11D2-A67D-00105A42887F");
         static readonly Guid IidMaterial10 = new Guid("678C0994-7D66-11D2-A67D-00105A42887F");
-        static readonly Guid IidMaterialContext = new Guid("678C0A9F-7D66-11D2-A67D-00105A42887F");
-        static readonly Guid IidCapeError = new Guid("678C09A8-7D66-11D2-A67D-00105A42887F");
 
         public static double[] ToDoubles(object raw)
         {
@@ -619,36 +617,27 @@ namespace PhD.DfmMethanation
                 CapeTrace.Write("Flash no equilibrium " + ex.GetBaseException().Message);
                 return false;
             }
-            var bound = false;
             try
             {
                 var routine = (ICapeThermoEquilibriumRoutine11)raw;
-                // TEA's equilibrium routine reads the material passed through
-                // SetMaterial. A QI of the routine on the stream is not bound
-                // until that call.
-                bound = BindMaterial(raw, mo);
+                // SetMaterial on this object closed COCO with no log line
+                // after the property probe. The stream already carries the
+                // equilibrium routine, so call CalcEquilibrium on it directly.
+                // Temperature and pressure are readable only with an empty
+                // basis; the word UNDEFINED is rejected by TEA.
                 if (TrySpecPairs(routine, mo))
                     return true;
                 if (TryEquilibrium(
                         routine, mo,
-                        new[] { "temperature", "UNDEFINED" },
-                        new[] { "pressure", "UNDEFINED" },
+                        new[] { "temperature", "" },
+                        new[] { "pressure", "" },
                         "Unspecified",
-                        "TP basis UNDEFINED"))
-                    return true;
-                if (TryEquilibrium(
-                        routine, mo,
-                        new object[] { "temperature" },
-                        new object[] { "pressure" },
-                        "Unspecified",
-                        "TP variant"))
+                        "TP basis empty"))
                     return true;
                 return false;
             }
             finally
             {
-                if (bound)
-                    UnbindMaterial(raw);
                 ReleaseRcw(raw);
             }
         }
@@ -675,48 +664,6 @@ namespace PhD.DfmMethanation
                     return true;
             }
             return false;
-        }
-
-        static bool BindMaterial(object routine, object mo)
-        {
-            object ctx = null;
-            try
-            {
-                ctx = AsInterface(routine, IidMaterialContext, typeof(ICapeThermoMaterialContext));
-                ((ICapeThermoMaterialContext)ctx).SetMaterial(mo);
-                CapeTrace.Write("SetMaterial ok");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                ClearError();
-                CapeTrace.Write("SetMaterial " + ErrorText(ex));
-                return false;
-            }
-            finally
-            {
-                ReleaseRcw(ctx);
-            }
-        }
-
-        static void UnbindMaterial(object routine)
-        {
-            object ctx = null;
-            try
-            {
-                ctx = AsInterface(routine, IidMaterialContext, typeof(ICapeThermoMaterialContext));
-                ((ICapeThermoMaterialContext)ctx).UnsetMaterial();
-                CapeTrace.Write("UnsetMaterial ok");
-            }
-            catch (Exception ex)
-            {
-                ClearError();
-                CapeTrace.Write("UnsetMaterial " + ErrorText(ex));
-            }
-            finally
-            {
-                ReleaseRcw(ctx);
-            }
         }
 
         public static void ProbeOverall(object mo)
@@ -779,9 +726,6 @@ namespace PhD.DfmMethanation
             catch (Exception ex)
             {
                 var text = ErrorText(ex);
-                var cape = CapeErrorText(routine);
-                if (!string.IsNullOrWhiteSpace(cape))
-                    text = text + " | " + cape;
                 ClearError();
                 CapeTrace.Write("CalcEquilibrium " + tag + " " + text);
                 LogPhases(mo, "flash");
@@ -803,17 +747,15 @@ namespace PhD.DfmMethanation
             // status 0,0 back on the outlet COFE checks.
             var payloads = new[]
             {
-                new { name = "int lb=0", status = (object)new int[] { 1 } },
-                new { name = "int lb=1", status = (object)OneBasedInts(new[] { 1 }) },
-                new { name = "short lb=0", status = (object)new short[] { 1 } },
-                new { name = "variant lb=0", status = (object)new object[] { 1 } },
-                new { name = "Cape_AtEquilibrium", status = (object)new[] { "Cape_AtEquilibrium" } }
+                new { name = "int lb=0", labels = (object)labels, status = (object)new int[] { 1 } },
+                new { name = "int lb=1", labels = (object)OneBasedStrings(labels), status = (object)OneBasedInts(new[] { 1 }) },
+                new { name = "Cape_AtEquilibrium", labels = (object)labels, status = (object)new[] { "Cape_AtEquilibrium" } }
             };
             foreach (var payload in payloads)
             {
                 try
                 {
-                    mat.SetPresentPhases(labels, payload.status);
+                    mat.SetPresentPhases(payload.labels, payload.status);
                     LogPhases(mo, "mark " + payload.name);
                     if (PresentPhasesAtEquilibrium(mo))
                         return true;
@@ -825,27 +767,6 @@ namespace PhD.DfmMethanation
                 }
             }
             return false;
-        }
-
-        static string CapeErrorText(object comObject)
-        {
-            object err = null;
-            try
-            {
-                err = AsInterface(comObject, IidCapeError, typeof(ICapeError));
-                var cape = (ICapeError)err;
-                var description = cape.get_description() ?? "";
-                var name = cape.get_Name() ?? "";
-                return (description + " " + name).Trim();
-            }
-            catch
-            {
-                return "";
-            }
-            finally
-            {
-                ReleaseRcw(err);
-            }
         }
 
         static bool TryPresent(ICapeThermoMaterial11 mat, string[] labels, int phaseStatus)
@@ -1042,41 +963,6 @@ namespace PhD.DfmMethanation
             [MarshalAs(UnmanagedType.Struct)] object specification1,
             [MarshalAs(UnmanagedType.Struct)] object specification2,
             [MarshalAs(UnmanagedType.BStr)] string solutionType);
-    }
-
-    // SetMaterial is dispid 1. The equilibrium routine uses this material
-    // for GetOverallProp and SetPresentPhases during CalcEquilibrium.
-    [ComImport]
-    [Guid("678C0A9F-7D66-11D2-A67D-00105A42887F")]
-    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
-    internal interface ICapeThermoMaterialContext
-    {
-        void SetMaterial([MarshalAs(UnmanagedType.IDispatch)] object material);
-        void UnsetMaterial();
-    }
-
-    [ComImport]
-    [Guid("678C09A8-7D66-11D2-A67D-00105A42887F")]
-    [InterfaceType(ComInterfaceType.InterfaceIsDual)]
-    interface ICapeError
-    {
-        [return: MarshalAs(UnmanagedType.BStr)]
-        string get_Name();
-
-        [return: MarshalAs(UnmanagedType.BStr)]
-        string get_description();
-
-        [return: MarshalAs(UnmanagedType.BStr)]
-        string get_scope();
-
-        [return: MarshalAs(UnmanagedType.BStr)]
-        string get_interfaceName();
-
-        [return: MarshalAs(UnmanagedType.BStr)]
-        string get_operation();
-
-        [return: MarshalAs(UnmanagedType.BStr)]
-        string get_moreInfo();
     }
 
 }
